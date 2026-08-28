@@ -25,6 +25,19 @@ body {
   font-family: var(--font-sans);
 }
 
+html.overlay-surface,
+html.overlay-surface body,
+html.overlay-surface #root {
+  min-height: 0;
+  height: 100%;
+  background: transparent;
+}
+
+html.overlay-surface body {
+  background: rgb(28 25 22 / 0.92);
+  border-radius: 12px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

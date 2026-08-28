@@ -3,6 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
+  "main": "dist-electron/main.cjs",
   "scripts": {
     "dev": "concurrently -n server,web -c cyan,magenta \"npm run dev:server\" \"npm run dev:client\"",
     "dev:server": "tsx watch server/index.ts",
@@ -10,7 +11,10 @@
     "build": "tsc --noEmit && vite build",
     "start": "tsx server/index.ts",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.electron.json",
+    "build:electron": "node scripts/build-electron.mjs",
+    "dev:desktop": "concurrently -n web,desktop -c magenta,green \"vite\" \"npm run dev:electron\"",
+    "dev:electron": "node scripts/build-electron.mjs && wait-on http://127.0.0.1:5173 && electron ."
   },
   "dependencies": {
     "@fontsource-variable/geist": "^5.2.8",
@@ -31,10 +35,12 @@
     "@types/ws": "^8.18.1",
     "@vitejs/plugin-react": "^5.0.2",
     "concurrently": "^9.2.1",
+    "electron": "^44.0.0",
     "tailwindcss": "^4.1.12",
     "tsx": "^4.20.5",
     "typescript": "^5.9.2",
     "vite": "^7.1.3",
-    "vitest": "^4.1.11"
+    "vitest": "^4.1.11",
+    "wait-on": "^9.1.0"
   }
 }
