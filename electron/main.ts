@@ -1,13 +1,20 @@
 import {
   app,
   BrowserWindow,
+  globalShortcut,
+  ipcMain,
   Menu,
   nativeImage,
   Tray,
   type MenuItemConstructorOptions,
 } from "electron";
 import path from "node:path";
-import { createShell, type TrayItem } from "../src/shell/shell";
+import { createDemoOverlaySession } from "../src/dictation/demo-overlay-session";
+import { createDictation } from "../src/dictation/dictation";
+import {
+  createShell,
+  type TrayItem,
+} from "../src/shell/shell";
 import { overlayWindowOptions, studioWindowOptions } from "./window-options";
 
 const DEV_URL = "http://127.0.0.1:5173";
@@ -25,13 +32,19 @@ function rendererUrl(hash: "studio" | "overlay") {
 }
 
 void app.whenReady().then(() => {
+  const preloadPath = path.join(__dirname, "preload.cjs");
   const studio = new BrowserWindow(studioWindowOptions());
-  const overlay = new BrowserWindow(overlayWindowOptions());
+  const overlay = new BrowserWindow(overlayWindowOptions(preloadPath));
   void studio.loadURL(rendererUrl("studio"));
   void overlay.loadURL(rendererUrl("overlay"));
 
   overlay.setAlwaysOnTop(true, "screen-saver");
   overlay.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+
+  const dictation = createDictation({
+    session: createDemoOverlaySession(),
+    caretInject: { inject() {} },
+  });
 
   let quitting = false;
   const tray = new Tray(nativeImage.createFromBuffer(TRAY_PNG));
@@ -71,9 +84,31 @@ void app.whenReady().then(() => {
     app: {
       quit() {
         quitting = true;
+        globalShortcut.unregisterAll();
         app.quit();
       },
     },
+    dictation,
+    overlaySnapshot: {
+      push(snapshot) {
+        if (!overlay.isDestroyed()) {
+          overlay.webContents.send("mspiky:overlay-snapshot", snapshot);
+        }
+      },
+    },
+    hotkeys: {
+      register(chord, handler) {
+        globalShortcut.register(chord, handler);
+      },
+    },
+  });
+
+  ipcMain.on("mspiky:overlay-pause", () => {
+    shell.pauseDictation();
+  });
+
+  ipcMain.on("mspiky:overlay-resume", () => {
+    shell.resumeDictation();
   });
 
   studio.on("close", (event) => {
@@ -93,4 +128,8 @@ void app.whenReady().then(() => {
   });
 
   shell.showStudio();
+});
+
+app.on("will-quit", () => {
+  globalShortcut.unregisterAll();
 });

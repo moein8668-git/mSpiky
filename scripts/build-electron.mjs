@@ -1,11 +1,21 @@
 import * as esbuild from "esbuild";
 
-await esbuild.build({
-  entryPoints: ["electron/main.ts"],
+const shared = {
   bundle: true,
   platform: "node",
   format: "cjs",
-  outfile: "dist-electron/main.cjs",
   external: ["electron"],
   sourcemap: true,
+};
+
+await esbuild.build({
+  ...shared,
+  entryPoints: ["electron/main.ts"],
+  outfile: "dist-electron/main.cjs",
+});
+
+await esbuild.build({
+  ...shared,
+  entryPoints: ["electron/preload.ts"],
+  outfile: "dist-electron/preload.cjs",
 });

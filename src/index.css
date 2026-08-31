@@ -38,6 +38,17 @@ html.overlay-surface body {
   border-radius: 12px;
 }
 
+.overlay-control {
+  -webkit-app-region: no-drag;
+  border: 1px solid var(--color-line);
+  background: transparent;
+  cursor: pointer;
+}
+
+.overlay-control:hover {
+  background: rgb(255 255 255 / 0.06);
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

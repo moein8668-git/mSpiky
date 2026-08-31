@@ -11,13 +11,15 @@ function linuxOverlayType(): BrowserWindowConstructorOptions["type"] {
   return "toolbar";
 }
 
-export function overlayWindowOptions(): BrowserWindowConstructorOptions {
+export function overlayWindowOptions(
+  preloadPath: string,
+): BrowserWindowConstructorOptions {
   const linux = process.platform === "linux";
   const mac = process.platform === "darwin";
 
   return {
     width: 520,
-    height: 56,
+    height: 72,
     frame: false,
     transparent: true,
     skipTaskbar: true,
@@ -33,6 +35,7 @@ export function overlayWindowOptions(): BrowserWindowConstructorOptions {
     acceptFirstMouse: true,
     type: linux ? linuxOverlayType() : mac ? "panel" : undefined,
     webPreferences: {
+      preload: preloadPath,
       backgroundThrottling: false,
       nodeIntegration: false,
       contextIsolation: true,

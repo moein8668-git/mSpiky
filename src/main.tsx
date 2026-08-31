@@ -1,7 +1,8 @@
 import { StrictMode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { Overlay } from "./overlay/Overlay";
+import { OverlayApp } from "./overlay/OverlayApp";
 import { Studio } from "./studio/Studio";
+import "./overlay/mspiky-api";
 import "./index.css";
 
 function surfaceFromHash() {
@@ -24,7 +25,7 @@ function Root() {
     );
   }, [surface]);
 
-  return surface === "overlay" ? <Overlay /> : <Studio />;
+  return surface === "overlay" ? <OverlayApp /> : <Studio />;
 }
 
 createRoot(document.getElementById("root")!).render(

@@ -1,11 +1,23 @@
+import type { OverlaySnapshot } from "../dictation/dictation";
+
 export const studioChrome = {
   heading: "Studio",
   body: "Settings, files, and history will live here.",
+  overlayPauseNote:
+    typeof process !== "undefined" && process.platform === "linux"
+      ? "On some Linux desktops, use a Pause hotkey instead of clicking Pause on the Overlay."
+      : null,
 };
 
 export const overlayChrome = {
-  status: "Ready",
+  statusLabel: {
+    idle: "Ready",
+    listening: "Listening",
+    paused: "Paused",
+  },
 };
+
+export const DEFAULT_DICTATION_HOTKEY = "Control+Shift+Space";
 
 export type TrayItem = {
   id: "show-studio" | "start-dictation" | "quit";
@@ -25,6 +37,22 @@ export type AppSurface = {
   quit(): void;
 };
 
+export type DictationSurface = {
+  start(): void;
+  pause(): void;
+  resume(): void;
+  stop(): void;
+  snapshot(): OverlaySnapshot;
+};
+
+export type OverlaySnapshotSurface = {
+  push(snapshot: OverlaySnapshot): void;
+};
+
+export type HotkeySurface = {
+  register(chord: string, handler: () => void): void;
+};
+
 export type ShellSnapshot = {
   studioVisible: boolean;
   overlayVisible: boolean;
@@ -42,12 +70,30 @@ export function createShell(adapters: {
   overlay: WindowSurface;
   tray: TraySurface;
   app: AppSurface;
+  dictation: DictationSurface;
+  overlaySnapshot: OverlaySnapshotSurface;
+  hotkeys: HotkeySurface;
 }) {
   adapters.tray.setMenu(TRAY_ITEMS);
 
   let studioVisible = false;
-  let overlayVisible = false;
   let running = true;
+
+  function syncOverlay() {
+    const snapshot = adapters.dictation.snapshot();
+    if (snapshot.overlayVisible) adapters.overlay.show();
+    else adapters.overlay.hide();
+    adapters.overlaySnapshot.push(snapshot);
+  }
+
+  function toggleDictation() {
+    const { status } = adapters.dictation.snapshot();
+    if (status === "idle") adapters.dictation.start();
+    else adapters.dictation.stop();
+    syncOverlay();
+  }
+
+  adapters.hotkeys.register(DEFAULT_DICTATION_HOTKEY, toggleDictation);
 
   return {
     showStudio() {
@@ -59,15 +105,26 @@ export function createShell(adapters: {
       adapters.studio.hide();
     },
     startDictation() {
-      overlayVisible = true;
-      adapters.overlay.show();
+      toggleDictation();
+    },
+    pauseDictation() {
+      adapters.dictation.pause();
+      syncOverlay();
+    },
+    resumeDictation() {
+      adapters.dictation.resume();
+      syncOverlay();
     },
     quit() {
       running = false;
       adapters.app.quit();
     },
     snapshot(): ShellSnapshot {
-      return { studioVisible, overlayVisible, running };
+      return {
+        studioVisible,
+        overlayVisible: adapters.dictation.snapshot().overlayVisible,
+        running,
+      };
     },
   };
 }

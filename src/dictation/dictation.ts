@@ -93,6 +93,17 @@ export function createDictation(adapters: {
     settlePendingFlush();
   }
 
+  function pcmPeak(pcm: Uint8Array): number {
+    let peak = 0;
+    for (let i = 0; i + 1 < pcm.length; i += 2) {
+      const sample = pcm[i] | (pcm[i + 1] << 8);
+      const signed = sample > 32767 ? sample - 65536 : sample;
+      const level = Math.abs(signed) / 32768;
+      if (level > peak) peak = level;
+    }
+    return peak;
+  }
+
   return {
     start() {
       if (snapshot.status !== "idle") {
@@ -125,6 +136,7 @@ export function createDictation(adapters: {
     sendPcm(pcm: Uint8Array) {
       if (snapshot.status === "listening") {
         adapters.session.sendPcm(pcm);
+        snapshot = { ...snapshot, meter: pcmPeak(pcm) };
       }
     },
     snapshot() {
