@@ -14,5 +14,5 @@
     "moduleDetection": "force",
     "types": ["node"]
   },
-  "include": ["electron/**/*.ts"]
+  "include": ["electron/**/*.ts", "src/caret-inject/**/*.ts", "src/dictation/caret-inject-adapter.ts"]
 }

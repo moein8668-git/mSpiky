@@ -1,3 +1,6 @@
+import type { FlushResult } from "../caret-inject/paste-first";
+import { flushErrorMessage } from "../caret-inject/types";
+
 export type OverlayStatus = "idle" | "listening" | "paused";
 
 export type OverlaySnapshot = {
@@ -23,12 +26,14 @@ export type SessionAdapter = {
 };
 
 export type CaretInjectAdapter = {
-  inject(text: string): void;
+  beginDictation(): void;
+  inject(text: string): FlushResult | Promise<FlushResult>;
 };
 
 export function createDictation(adapters: {
   session: SessionAdapter;
   caretInject: CaretInjectAdapter;
+  onSnapshotChange?: (snapshot: OverlaySnapshot) => void;
 }) {
   const idleSnapshot = (): OverlaySnapshot => ({
     status: "idle",
@@ -42,22 +47,59 @@ export function createDictation(adapters: {
   let snapshot = idleSnapshot();
   let pendingFlush: "pause" | "stop" | null = null;
   let audioSettled = true;
+  const flushWaiters: Array<() => void> = [];
 
-  function flushIfReady() {
+  function publish() {
+    adapters.onSnapshotChange?.(snapshot);
+  }
+
+  function notifyFlushWaiters() {
+    if (pendingFlush !== null) return;
+    for (const resolve of flushWaiters.splice(0)) resolve();
+  }
+
+  let settleChain = Promise.resolve();
+
+  function scheduleSettle() {
+    settleChain = settleChain.then(() => settlePendingFlush());
+    return settleChain;
+  }
+
+  function waitForPendingFlush(): Promise<void> {
+    if (pendingFlush === null) return Promise.resolve();
+    return new Promise((resolve) => {
+      flushWaiters.push(resolve);
+    });
+  }
+
+  async function flushIfReady() {
     if (snapshot.draft) return false;
     if (!audioSettled) return false;
     const text = snapshot.commits.join(" ").trim();
-    if (text) adapters.caretInject.inject(text);
+    if (!text) {
+      snapshot = { ...snapshot, commits: [] };
+      publish();
+      return true;
+    }
+    const result = await Promise.resolve(adapters.caretInject.inject(text));
+    const error = flushErrorMessage(result);
+    if (result.kind === "skipped") {
+      snapshot = { ...snapshot, error };
+      publish();
+      return true;
+    }
     snapshot = {
       ...snapshot,
       commits: [],
+      error,
     };
+    publish();
     return true;
   }
 
-  function settlePendingFlush() {
+  async function settlePendingFlush() {
     if (!pendingFlush) return;
-    if (!flushIfReady()) return;
+    if (!(await flushIfReady())) return;
     if (pendingFlush === "pause") {
       snapshot = { ...snapshot, status: "paused" };
     }
@@ -66,11 +108,14 @@ export function createDictation(adapters: {
       snapshot = idleSnapshot();
     }
     pendingFlush = null;
+    publish();
+    notifyFlushWaiters();
   }
 
   const listener: SessionListener = {
     onDraft(text) {
       snapshot = { ...snapshot, draft: text };
+      publish();
     },
     onCommit(text) {
       snapshot = {
@@ -78,19 +123,20 @@ export function createDictation(adapters: {
         draft: "",
         commits: [...snapshot.commits, text],
       };
-      settlePendingFlush();
+      publish();
+      void scheduleSettle();
     },
     onAudioEnded() {
       audioSettled = true;
-      settlePendingFlush();
+      void scheduleSettle();
     },
   };
 
-  function stop() {
+  async function stop() {
     if (snapshot.status === "idle") return;
-    adapters.session.sendEndOfAudio();
     pendingFlush = "stop";
-    settlePendingFlush();
+    adapters.session.sendEndOfAudio();
+    await waitForPendingFlush();
   }
 
   function pcmPeak(pcm: Uint8Array): number {
@@ -107,8 +153,7 @@ export function createDictation(adapters: {
   return {
     start() {
       if (snapshot.status !== "idle") {
-        stop();
-        return;
+        return stop();
       }
       snapshot = {
         status: "listening",
@@ -119,24 +164,28 @@ export function createDictation(adapters: {
         overlayVisible: true,
       };
       audioSettled = false;
+      adapters.caretInject.beginDictation();
       adapters.session.start(listener);
+      publish();
     },
     pause() {
-      if (snapshot.status !== "listening") return;
-      adapters.session.sendEndOfAudio();
+      if (snapshot.status !== "listening") return Promise.resolve();
       pendingFlush = "pause";
-      settlePendingFlush();
+      adapters.session.sendEndOfAudio();
+      return waitForPendingFlush();
     },
     resume() {
       if (snapshot.status !== "paused") return;
       audioSettled = false;
-      snapshot = { ...snapshot, status: "listening" };
+      snapshot = { ...snapshot, status: "listening", error: null };
+      publish();
     },
     stop,
     sendPcm(pcm: Uint8Array) {
       if (snapshot.status === "listening") {
         adapters.session.sendPcm(pcm);
         snapshot = { ...snapshot, meter: pcmPeak(pcm) };
+        publish();
       }
     },
     snapshot() {

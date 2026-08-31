@@ -137,18 +137,19 @@ test("Dictation hotkey starts Dictation and shows Overlay", () => {
   expect(pushed.at(-1)?.status).toBe("listening");
 });
 
-test("a second Dictation hotkey tap Stops and hides Overlay", () => {
+test("a second Dictation hotkey tap Stops and hides Overlay", async () => {
   const { hotkey, shown, dictationCalls } = createHarness();
 
   hotkey();
   hotkey();
+  await Promise.resolve();
 
   expect(dictationCalls.start).toBe(1);
   expect(dictationCalls.stop).toBe(1);
   expect(shown.overlay).toBe(false);
 });
 
-test("tray Start Dictation toggles Dictation like the hotkey", () => {
+test("tray Start Dictation toggles Dictation like the hotkey", async () => {
   const { shell, dictationCalls, shown } = createHarness();
 
   shell.startDictation();
@@ -156,6 +157,7 @@ test("tray Start Dictation toggles Dictation like the hotkey", () => {
   expect(shown.overlay).toBe(true);
 
   shell.startDictation();
+  await Promise.resolve();
   expect(dictationCalls.stop).toBe(1);
   expect(shown.overlay).toBe(false);
 });

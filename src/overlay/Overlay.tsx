@@ -13,6 +13,7 @@ export function Overlay({
     status: "idle" | "listening" | "paused";
     draft: string;
     commits: string[];
+    error: string | null;
     meter: number;
   };
   onPause: () => void;
@@ -40,6 +41,11 @@ export function Overlay({
       ) : null}
       {snapshot.commits.length > 0 ? (
         <span className="text-sm text-cream">{snapshot.commits.join(" ")}</span>
+      ) : null}
+      {snapshot.error ? (
+        <span className="text-sm text-live" role="alert">
+          {snapshot.error}
+        </span>
       ) : null}
       {snapshot.status === "listening" ? (
         <button

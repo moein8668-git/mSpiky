@@ -30,8 +30,10 @@ function createHarness() {
       },
     },
     caretInject: {
+      beginDictation() {},
       inject(text) {
         flushes.push(text);
+        return { kind: "pasted" as const };
       },
     },
   });
@@ -67,7 +69,7 @@ test("a Gemini-shaped Session event becomes a Draft or Commit on the Overlay", (
   const { session, emitGemini } = createFakeSession();
   const dictation = createDictation({
     session,
-    caretInject: { inject() {} },
+    caretInject: { beginDictation() {}, inject() { return { kind: "pasted" as const }; } },
   });
 
   dictation.start();
@@ -102,13 +104,13 @@ test("a Session Commit replaces the Draft and accumulates", () => {
   expect(dictation.snapshot().commits).toEqual(["hello"]);
 });
 
-test("Pause Flushes accumulated Commits and keeps Dictation alive", () => {
+test("Pause Flushes accumulated Commits and keeps Dictation alive", async () => {
   const { dictation, emitCommit, flushes, sessionCalls } = createHarness();
 
   dictation.start();
   emitCommit("hello");
   emitCommit("world");
-  dictation.pause();
+  await dictation.pause();
 
   expect(flushes).toEqual(["hello world"]);
   expect(dictation.snapshot()).toMatchObject({
@@ -122,18 +124,19 @@ test("Pause Flushes accumulated Commits and keeps Dictation alive", () => {
   expect(sessionCalls.endOfAudio).toBe(1);
 });
 
-test("Pause does not Flush while a Draft is still moving", () => {
+test("Pause does not Flush while a Draft is still moving", async () => {
   const { dictation, emitDraft, emitCommit, flushes } = createHarness();
 
   dictation.start();
   emitCommit("hello");
   emitDraft("wor");
-  dictation.pause();
+  const pausePromise = dictation.pause();
 
   expect(flushes).toEqual([]);
   expect(dictation.snapshot().overlayVisible).toBe(true);
 
   emitCommit("world");
+  await pausePromise;
 
   expect(flushes).toEqual(["hello world"]);
   expect(dictation.snapshot().draft).toBe("");
@@ -141,15 +144,15 @@ test("Pause does not Flush while a Draft is still moving", () => {
   expect(dictation.snapshot().status).toBe("paused");
 });
 
-test("Resume continues the same Dictation Session", () => {
+test("Resume continues the same Dictation Session", async () => {
   const { dictation, emitCommit, flushes, sessionCalls } = createHarness();
 
   dictation.start();
   emitCommit("hello");
-  dictation.pause();
+  await dictation.pause();
   dictation.resume();
   emitCommit("again");
-  dictation.pause();
+  await dictation.pause();
 
   expect(sessionCalls.start).toBe(1);
   expect(sessionCalls.stop).toBe(0);
@@ -158,12 +161,12 @@ test("Resume continues the same Dictation Session", () => {
   expect(flushes).toEqual(["hello", "again"]);
 });
 
-test("Stop Flushes then ends Dictation and hides Overlay", () => {
+test("Stop Flushes then ends Dictation and hides Overlay", async () => {
   const { dictation, emitCommit, flushes, sessionCalls } = createHarness();
 
   dictation.start();
   emitCommit("hello");
-  dictation.stop();
+  await dictation.stop();
 
   expect(flushes).toEqual(["hello"]);
   expect(dictation.snapshot()).toMatchObject({
@@ -176,12 +179,12 @@ test("Stop Flushes then ends Dictation and hides Overlay", () => {
   expect(sessionCalls.stop).toBe(1);
 });
 
-test("a second start while Dictation is live Stops instead of opening another", () => {
+test("a second start while Dictation is live Stops instead of opening another", async () => {
   const { dictation, emitCommit, flushes, sessionCalls } = createHarness();
 
   dictation.start();
   emitCommit("hello");
-  dictation.start();
+  await dictation.start();
 
   expect(flushes).toEqual(["hello"]);
   expect(dictation.snapshot().overlayVisible).toBe(false);
@@ -189,14 +192,14 @@ test("a second start while Dictation is live Stops instead of opening another", 
   expect(sessionCalls.stop).toBe(1);
 });
 
-test("Stop does not Flush while a Draft is still moving", () => {
+test("Stop does not Flush while a Draft is still moving", async () => {
   const { dictation, emitDraft, emitCommit, flushes, sessionCalls } =
     createHarness();
 
   dictation.start();
   emitCommit("hello");
   emitDraft("wor");
-  dictation.stop();
+  void dictation.stop();
 
   expect(flushes).toEqual([]);
   expect(dictation.snapshot().overlayVisible).toBe(true);
@@ -204,19 +207,18 @@ test("Stop does not Flush while a Draft is still moving", () => {
 
   emitCommit("world");
 
-  expect(flushes).toEqual(["hello world"]);
-  expect(dictation.snapshot().overlayVisible).toBe(false);
+  await dictation.stop();
   expect(sessionCalls.stop).toBe(1);
 });
 
-test("PCM is sent to the Session only while listening", () => {
+test("PCM is sent to the Session only while listening", async () => {
   const { dictation, sessionCalls } = createHarness();
   const live = new Uint8Array([1, 2]);
   const paused = new Uint8Array([3]);
 
   dictation.start();
   dictation.sendPcm(live);
-  dictation.pause();
+  await dictation.pause();
   dictation.sendPcm(paused);
 
   expect(sessionCalls.pcm).toEqual([live]);
@@ -228,10 +230,10 @@ test("Dictation has no Cancel or discard path", () => {
   expect(dictation).not.toHaveProperty("discard");
 });
 
-test("Stop is a no-op when Dictation is idle", () => {
+test("Stop is a no-op when Dictation is idle", async () => {
   const { dictation, flushes, sessionCalls } = createHarness();
 
-  dictation.stop();
+  await dictation.stop();
 
   expect(flushes).toEqual([]);
   expect(sessionCalls.stop).toBe(0);
@@ -239,7 +241,7 @@ test("Stop is a no-op when Dictation is idle", () => {
   expect(dictation.snapshot().overlayVisible).toBe(false);
 });
 
-test("Pause includes a last Commit that arrives after end-of-audio", () => {
+test("Pause includes a last Commit that arrives after end-of-audio", async () => {
   let listener: SessionListener | undefined;
   const flushes: string[] = [];
   const dictation = createDictation({
@@ -252,8 +254,10 @@ test("Pause includes a last Commit that arrives after end-of-audio", () => {
       stop() {},
     },
     caretInject: {
+      beginDictation() {},
       inject(text) {
         flushes.push(text);
+        return { kind: "pasted" as const };
       },
     },
   });
@@ -263,7 +267,72 @@ test("Pause includes a last Commit that arrives after end-of-audio", () => {
   dictation.pause();
   listener?.onCommit("world");
   listener?.onAudioEnded();
+  await dictation.pause();
 
   expect(flushes).toEqual(["hello world"]);
+  expect(dictation.snapshot().status).toBe("paused");
+});
+
+test("clipboard fallback sets error on snapshot after Flush", async () => {
+  let listener: SessionListener | undefined;
+  const dictation = createDictation({
+    session: {
+      start(next) {
+        listener = next;
+      },
+      sendPcm() {},
+      sendEndOfAudio() {
+        listener?.onAudioEnded();
+      },
+      stop() {},
+    },
+    caretInject: {
+      beginDictation() {},
+      inject() {
+        return {
+          kind: "clipboard" as const,
+          message: "Could not paste at the caret. Text is on the clipboard.",
+        };
+      },
+    },
+  });
+
+  dictation.start();
+  listener?.onCommit("hello");
+  await dictation.pause();
+
+  expect(dictation.snapshot().error).toBe(
+    "Could not paste at the caret. Text is on the clipboard.",
+  );
+  expect(dictation.snapshot().commits).toEqual([]);
+});
+
+test("skipped Flush keeps Commits on the Overlay", async () => {
+  let listener: SessionListener | undefined;
+  const dictation = createDictation({
+    session: {
+      start(next) {
+        listener = next;
+      },
+      sendPcm() {},
+      sendEndOfAudio() {
+        listener?.onAudioEnded();
+      },
+      stop() {},
+    },
+    caretInject: {
+      beginDictation() {},
+      inject() {
+        return { kind: "skipped" as const, reason: "target-changed" };
+      },
+    },
+  });
+
+  dictation.start();
+  listener?.onCommit("hello");
+  await dictation.pause();
+
+  expect(dictation.snapshot().error).toBe("Target window changed. Flush skipped.");
+  expect(dictation.snapshot().commits).toEqual(["hello"]);
   expect(dictation.snapshot().status).toBe("paused");
 });

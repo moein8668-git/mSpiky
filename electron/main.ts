@@ -10,11 +10,13 @@ import {
 } from "electron";
 import path from "node:path";
 import { createDemoOverlaySession } from "../src/dictation/demo-overlay-session";
+import { caretInjectFromPasteFirst } from "../src/dictation/caret-inject-adapter";
 import { createDictation } from "../src/dictation/dictation";
 import {
   createShell,
   type TrayItem,
 } from "../src/shell/shell";
+import { createElectronCaretInject } from "./caret-inject";
 import { overlayWindowOptions, studioWindowOptions } from "./window-options";
 
 const DEV_URL = "http://127.0.0.1:5173";
@@ -41,16 +43,20 @@ void app.whenReady().then(() => {
   overlay.setAlwaysOnTop(true, "screen-saver");
   overlay.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
 
+  const pasteFirst = createElectronCaretInject();
+  let shell: ReturnType<typeof createShell>;
   const dictation = createDictation({
     session: createDemoOverlaySession(),
-    caretInject: { inject() {} },
+    caretInject: caretInjectFromPasteFirst(pasteFirst),
+    onSnapshotChange: () => {
+      shell?.refreshOverlay();
+    },
   });
 
   let quitting = false;
   const tray = new Tray(nativeImage.createFromBuffer(TRAY_PNG));
   tray.setToolTip("mSpiky");
 
-  let shell: ReturnType<typeof createShell>;
   shell = createShell({
     studio: {
       show() {

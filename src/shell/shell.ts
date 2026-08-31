@@ -38,10 +38,10 @@ export type AppSurface = {
 };
 
 export type DictationSurface = {
-  start(): void;
-  pause(): void;
+  start(): void | Promise<void>;
+  pause(): void | Promise<void>;
   resume(): void;
-  stop(): void;
+  stop(): void | Promise<void>;
   snapshot(): OverlaySnapshot;
 };
 
@@ -86,14 +86,16 @@ export function createShell(adapters: {
     adapters.overlaySnapshot.push(snapshot);
   }
 
-  function toggleDictation() {
+  async function toggleDictation() {
     const { status } = adapters.dictation.snapshot();
     if (status === "idle") adapters.dictation.start();
-    else adapters.dictation.stop();
+    else await adapters.dictation.stop();
     syncOverlay();
   }
 
-  adapters.hotkeys.register(DEFAULT_DICTATION_HOTKEY, toggleDictation);
+  adapters.hotkeys.register(DEFAULT_DICTATION_HOTKEY, () => {
+    void toggleDictation();
+  });
 
   return {
     showStudio() {
@@ -105,14 +107,17 @@ export function createShell(adapters: {
       adapters.studio.hide();
     },
     startDictation() {
-      toggleDictation();
+      void toggleDictation();
     },
-    pauseDictation() {
-      adapters.dictation.pause();
+    async pauseDictation() {
+      await adapters.dictation.pause();
       syncOverlay();
     },
     resumeDictation() {
       adapters.dictation.resume();
+      syncOverlay();
+    },
+    refreshOverlay() {
       syncOverlay();
     },
     quit() {
