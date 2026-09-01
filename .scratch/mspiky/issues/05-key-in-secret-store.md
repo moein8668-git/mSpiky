@@ -4,9 +4,9 @@
 
 **Blocked by:** 02 Tray and non-activating Overlay.
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] Studio Settings can save and replace a Key. The Key is not written to user config as plaintext. On Linux without a keyring, a platform encrypted backup still works.
-- [ ] Starting Dictation without a stored Key is a no-op on the Session and shows a clear error (Studio or Overlay, whichever is in front). The user is not left with a silent Overlay.
-- [ ] Renderer never reads or caches the Key. Studio does not disable web security to reach Gemini.
-- [ ] mSpiky never ships a Key. UI copy talks about the user's Key, not a bundled credential.
+- [x] Studio Settings can save and replace a Key. The Key is not written to user config as plaintext. On Linux without a keyring, a platform encrypted backup still works.
+- [x] Starting Dictation without a stored Key is a no-op on the Session and shows a clear error (Studio or Overlay, whichever is in front). The user is not left with a silent Overlay.
+- [x] Renderer never reads or caches the Key. Studio does not disable web security to reach Gemini.
+- [x] mSpiky never ships a Key. UI copy talks about the user's Key, not a bundled credential.

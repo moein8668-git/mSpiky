@@ -1,8 +1,16 @@
 import type { OverlaySnapshot } from "../dictation/dictation";
+import { KEY_MISSING_MESSAGE } from "../secrets/messages";
 
 export const studioChrome = {
   heading: "Studio",
   body: "Settings, files, and history will live here.",
+  keyHeading: "Key",
+  keyBody:
+    "Paste your Key from Google AI Studio. mSpiky stores it in the OS secret store on this machine.",
+  keyPlaceholder: "Your Key",
+  keySave: "Save Key",
+  keySaved: "Key saved",
+  keyMissing: "No Key saved yet",
   overlayPauseNote:
     typeof process !== "undefined" && process.platform === "linux"
       ? "On some Linux desktops, use a Pause hotkey instead of clicking Pause on the Overlay."
@@ -39,10 +47,19 @@ export type AppSurface = {
 
 export type DictationSurface = {
   start(): void | Promise<void>;
+  showKeyMissing(message: string): void;
   pause(): void | Promise<void>;
   resume(): void;
   stop(): void | Promise<void>;
   snapshot(): OverlaySnapshot;
+};
+
+export type KeyStoreSurface = {
+  hasKey(): boolean;
+};
+
+export type StudioNoticeSurface = {
+  keyMissing(message: string): void;
 };
 
 export type OverlaySnapshotSurface = {
@@ -71,6 +88,8 @@ export function createShell(adapters: {
   tray: TraySurface;
   app: AppSurface;
   dictation: DictationSurface;
+  keyStore: KeyStoreSurface;
+  studioNotice: StudioNoticeSurface;
   overlaySnapshot: OverlaySnapshotSurface;
   hotkeys: HotkeySurface;
 }) {
@@ -88,8 +107,20 @@ export function createShell(adapters: {
 
   async function toggleDictation() {
     const { status } = adapters.dictation.snapshot();
-    if (status === "idle") adapters.dictation.start();
-    else await adapters.dictation.stop();
+    if (status === "idle") {
+      if (!adapters.keyStore.hasKey()) {
+        if (studioVisible) {
+          adapters.studioNotice.keyMissing(KEY_MISSING_MESSAGE);
+        } else {
+          adapters.dictation.showKeyMissing(KEY_MISSING_MESSAGE);
+          syncOverlay();
+        }
+        return;
+      }
+      adapters.dictation.start();
+    } else {
+      await adapters.dictation.stop();
+    }
     syncOverlay();
   }
 

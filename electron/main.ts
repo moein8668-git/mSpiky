@@ -17,6 +17,7 @@ import {
   type TrayItem,
 } from "../src/shell/shell";
 import { createElectronCaretInject } from "./caret-inject";
+import { createElectronKeyStore } from "./secrets/key-store";
 import { overlayWindowOptions, studioWindowOptions } from "./window-options";
 
 const DEV_URL = "http://127.0.0.1:5173";
@@ -35,7 +36,9 @@ function rendererUrl(hash: "studio" | "overlay") {
 
 void app.whenReady().then(() => {
   const preloadPath = path.join(__dirname, "preload.cjs");
-  const studio = new BrowserWindow(studioWindowOptions());
+  const studioPreloadPath = path.join(__dirname, "preload-studio.cjs");
+  const keyStore = createElectronKeyStore();
+  const studio = new BrowserWindow(studioWindowOptions(studioPreloadPath));
   const overlay = new BrowserWindow(overlayWindowOptions(preloadPath));
   void studio.loadURL(rendererUrl("studio"));
   void overlay.loadURL(rendererUrl("overlay"));
@@ -95,6 +98,14 @@ void app.whenReady().then(() => {
       },
     },
     dictation,
+    keyStore,
+    studioNotice: {
+      keyMissing(message) {
+        if (!studio.isDestroyed()) {
+          studio.webContents.send("mspiky:studio-key-missing", message);
+        }
+      },
+    },
     overlaySnapshot: {
       push(snapshot) {
         if (!overlay.isDestroyed()) {
@@ -115,6 +126,15 @@ void app.whenReady().then(() => {
 
   ipcMain.on("mspiky:overlay-resume", () => {
     shell.resumeDictation();
+  });
+
+  ipcMain.handle("mspiky:key-has", () => keyStore.hasKey());
+
+  ipcMain.handle("mspiky:key-save", (_event, value: unknown) => {
+    if (typeof value !== "string") {
+      throw new Error("Key must be a string");
+    }
+    keyStore.saveKey(value);
   });
 
   studio.on("close", (event) => {

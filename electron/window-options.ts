@@ -44,13 +44,16 @@ export function overlayWindowOptions(
   };
 }
 
-export function studioWindowOptions(): BrowserWindowConstructorOptions {
+export function studioWindowOptions(
+  preloadPath: string,
+): BrowserWindowConstructorOptions {
   return {
     width: 720,
     height: 560,
     title: "mSpiky",
     show: false,
     webPreferences: {
+      preload: preloadPath,
       nodeIntegration: false,
       contextIsolation: true,
       sandbox: true,

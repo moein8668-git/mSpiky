@@ -35,11 +35,13 @@ function listeningSnapshot(
 function createHarness() {
   const shown = { studio: false, overlay: false };
   const quitCalls: number[] = [];
-  const dictationCalls = { start: 0, pause: 0, resume: 0, stop: 0 };
+  const dictationCalls = { start: 0, pause: 0, resume: 0, stop: 0, keyMissing: 0 };
   const pushed: OverlaySnapshot[] = [];
+  const studioNotices: string[] = [];
   let menu: { id: string; label: string }[] = [];
   let snapshot = idleSnapshot();
   let hotkeyHandler: (() => void) | undefined;
+  let hasKey = true;
 
   const shell = createShell({
     studio: {
@@ -73,6 +75,14 @@ function createHarness() {
         dictationCalls.start += 1;
         snapshot = listeningSnapshot();
       },
+      showKeyMissing(message) {
+        dictationCalls.keyMissing += 1;
+        snapshot = {
+          ...idleSnapshot(),
+          error: message,
+          overlayVisible: true,
+        };
+      },
       pause() {
         dictationCalls.pause += 1;
         snapshot = { ...snapshot, status: "paused" };
@@ -87,6 +97,16 @@ function createHarness() {
       },
       snapshot() {
         return snapshot;
+      },
+    },
+    keyStore: {
+      hasKey() {
+        return hasKey;
+      },
+    },
+    studioNotice: {
+      keyMissing(message) {
+        studioNotices.push(message);
       },
     },
     overlaySnapshot: {
@@ -109,6 +129,10 @@ function createHarness() {
     pushed,
     getMenu: () => menu,
     hotkey: () => hotkeyHandler?.(),
+    setHasKey(next: boolean) {
+      hasKey = next;
+    },
+    studioNotices,
   };
 }
 
@@ -218,8 +242,34 @@ test("closing Studio does not hide an open Overlay", () => {
   });
 });
 
+test("Dictation hotkey without a Key shows an Overlay error and does not start", async () => {
+  const { hotkey, dictationCalls, pushed, setHasKey } = createHarness();
+
+  setHasKey(false);
+  hotkey();
+  await Promise.resolve();
+
+  expect(dictationCalls.start).toBe(0);
+  expect(dictationCalls.keyMissing).toBe(1);
+  expect(pushed.at(-1)?.error).toBe("Add your Key in Studio Settings.");
+  expect(pushed.at(-1)?.overlayVisible).toBe(true);
+});
+
+test("Start Dictation with Studio open and no Key shows a Studio notice", async () => {
+  const { shell, dictationCalls, studioNotices, setHasKey } = createHarness();
+
+  setHasKey(false);
+  shell.showStudio();
+  shell.startDictation();
+  await Promise.resolve();
+
+  expect(dictationCalls.start).toBe(0);
+  expect(studioNotices).toEqual(["Add your Key in Studio Settings."]);
+});
+
 test("Studio and Overlay chrome is English", () => {
   expect(studioChrome.heading).toBe("Studio");
+  expect(studioChrome.keyBody).toContain("your Key");
   expect(studioChrome.body).toBe(
     "Settings, files, and history will live here.",
   );

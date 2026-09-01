@@ -19,3 +19,9 @@ await esbuild.build({
   entryPoints: ["electron/preload.ts"],
   outfile: "dist-electron/preload.cjs",
 });
+
+await esbuild.build({
+  ...shared,
+  entryPoints: ["electron/preload-studio.ts"],
+  outfile: "dist-electron/preload-studio.cjs",
+});

@@ -168,6 +168,17 @@ export function createDictation(adapters: {
       adapters.session.start(listener);
       publish();
     },
+    showKeyMissing(message: string) {
+      snapshot = {
+        status: "idle",
+        draft: "",
+        commits: [],
+        error: message,
+        meter: 0,
+        overlayVisible: true,
+      };
+      publish();
+    },
     pause() {
       if (snapshot.status !== "listening") return Promise.resolve();
       pendingFlush = "pause";
