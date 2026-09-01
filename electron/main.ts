@@ -12,13 +12,17 @@ import path from "node:path";
 import { createDemoOverlaySession } from "../src/dictation/demo-overlay-session";
 import { caretInjectFromPasteFirst } from "../src/dictation/caret-inject-adapter";
 import { createDictation } from "../src/dictation/dictation";
+import { createGeminiLiveSession } from "../src/session/gemini-live-session";
 import {
   createShell,
   type TrayItem,
 } from "../src/shell/shell";
+import { createStudioCaptions } from "../src/studio/studio-captions";
 import { createElectronCaretInject } from "./caret-inject";
 import { createElectronKeyStore } from "./secrets/key-store";
+import { connectGeminiLive } from "./session/connect-gemini-live";
 import { overlayWindowOptions, studioWindowOptions } from "./window-options";
+import { NO_MIC_MESSAGE } from "../src/session/messages";
 
 const DEV_URL = "http://127.0.0.1:5173";
 
@@ -43,8 +47,32 @@ void app.whenReady().then(() => {
   void studio.loadURL(rendererUrl("studio"));
   void overlay.loadURL(rendererUrl("overlay"));
 
+  studio.webContents.session.setPermissionRequestHandler(
+    (_webContents, permission, callback) => {
+      callback(permission === "media");
+    },
+  );
+  studio.webContents.session.setPermissionCheckHandler(
+    (_webContents, permission) => permission === "media",
+  );
+
   overlay.setAlwaysOnTop(true, "screen-saver");
   overlay.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+
+  const liveSession = createGeminiLiveSession({
+    getKey() {
+      return keyStore.getKey();
+    },
+    connect: connectGeminiLive,
+  });
+  const captions = createStudioCaptions({
+    session: liveSession,
+    onSnapshotChange(snapshot) {
+      if (!studio.isDestroyed()) {
+        studio.webContents.send("mspiky:studio-captions", snapshot);
+      }
+    },
+  });
 
   const pasteFirst = createElectronCaretInject();
   let shell: ReturnType<typeof createShell>;
@@ -93,6 +121,7 @@ void app.whenReady().then(() => {
     app: {
       quit() {
         quitting = true;
+        captions.stop();
         globalShortcut.unregisterAll();
         app.quit();
       },
@@ -137,9 +166,50 @@ void app.whenReady().then(() => {
     keyStore.saveKey(value);
   });
 
+  ipcMain.handle("mspiky:studio-start", (_event, options: unknown) => {
+    const mode =
+      options &&
+      typeof options === "object" &&
+      "mode" in options &&
+      options.mode === "verbatim"
+        ? "verbatim"
+        : "smart";
+    const language =
+      options &&
+      typeof options === "object" &&
+      "language" in options &&
+      typeof options.language === "string"
+        ? options.language
+        : "";
+    captions.start({ mode, language });
+  });
+
+  ipcMain.handle("mspiky:studio-stop", () => {
+    captions.stop();
+  });
+
+  ipcMain.handle("mspiky:studio-fail", (_event, message: unknown) => {
+    captions.fail(typeof message === "string" ? message : NO_MIC_MESSAGE);
+  });
+
+  ipcMain.on("mspiky:studio-pcm", (_event, data: unknown) => {
+    if (data instanceof Uint8Array) {
+      captions.sendPcm(data);
+      return;
+    }
+    if (data instanceof ArrayBuffer) {
+      captions.sendPcm(new Uint8Array(data));
+      return;
+    }
+    if (Buffer.isBuffer(data)) {
+      captions.sendPcm(new Uint8Array(data));
+    }
+  });
+
   studio.on("close", (event) => {
     if (quitting) return;
     event.preventDefault();
+    captions.stop();
     shell.closeStudio();
   });
 

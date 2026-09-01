@@ -49,7 +49,7 @@ export function studioWindowOptions(
 ): BrowserWindowConstructorOptions {
   return {
     width: 720,
-    height: 560,
+    height: 780,
     title: "mSpiky",
     show: false,
     webPreferences: {

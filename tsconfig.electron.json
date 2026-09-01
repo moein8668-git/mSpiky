@@ -14,5 +14,17 @@
     "moduleDetection": "force",
     "types": ["node"]
   },
-  "include": ["electron/**/*.ts", "src/caret-inject/**/*.ts", "src/dictation/caret-inject-adapter.ts", "src/secrets/**/*.ts"]
+  "include": [
+    "electron/**/*.ts",
+    "src/caret-inject/paste-first.ts",
+    "src/caret-inject/types.ts",
+    "src/dictation/caret-inject-adapter.ts",
+    "src/dictation/dictation.ts",
+    "src/dictation/map-gemini-event.ts",
+    "src/secrets/key-store.ts",
+    "src/secrets/messages.ts",
+    "src/session/gemini-live-session.ts",
+    "src/session/messages.ts",
+    "src/studio/studio-captions.ts"
+  ]
 }

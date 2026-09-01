@@ -11,6 +11,22 @@ export const studioChrome = {
   keySave: "Save Key",
   keySaved: "Key saved",
   keyMissing: "No Key saved yet",
+  captionsHeading: "Captions",
+  captionsBody:
+    "Studio captions stay in Studio. Overlay Dictation is what Flushes into other apps.",
+  captionsPlaceholder: "Captions will appear here.",
+  statusReady: "Ready",
+  statusConnecting: "Connecting",
+  statusListening: "Listening",
+  statusError: "Error",
+  micLabel: "Microphone",
+  micDefault: "System default",
+  modeLabel: "Formatting",
+  modeSmart: "Smart",
+  modeVerbatim: "Verbatim",
+  languageLabel: "Spoken language",
+  micStart: "Start mic",
+  micStop: "Stop",
   overlayPauseNote:
     typeof process !== "undefined" && process.platform === "linux"
       ? "On some Linux desktops, use a Pause hotkey instead of clicking Pause on the Overlay."

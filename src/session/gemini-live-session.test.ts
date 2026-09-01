@@ -1,0 +1,125 @@
+import { expect, test } from "vitest";
+import { createGeminiLiveSession } from "./gemini-live-session";
+import type { GeminiShapedEvent } from "../dictation/map-gemini-event";
+import { KEY_MISSING_MESSAGE } from "../secrets/messages";
+import { INVALID_KEY_MESSAGE } from "./messages";
+
+function createHarness(options?: { key?: string | null }) {
+  const drafts: string[] = [];
+  const commits: string[] = [];
+  const errors: string[] = [];
+  const pcm: Uint8Array[] = [];
+  let ready = 0;
+  let connectCalls: Array<{ mode: string; language?: string; apiKey: string }> =
+    [];
+  let emitEvent: ((event: GeminiShapedEvent) => void) | undefined;
+  let failConnect: ((message: string) => void) | undefined;
+
+  const session = createGeminiLiveSession({
+    getKey() {
+      return options?.key === undefined ? "test-key" : options.key;
+    },
+    async connect(opts, callbacks) {
+      connectCalls.push({
+        mode: opts.mode,
+        language: opts.language,
+        apiKey: opts.apiKey,
+      });
+      emitEvent = callbacks.onEvent;
+      failConnect = callbacks.onError;
+      return {
+        sendPcm(chunk) {
+          pcm.push(chunk);
+        },
+        sendEndOfAudio() {},
+        close() {},
+      };
+    },
+  });
+
+  session.start(
+    {
+      onDraft(text) {
+        drafts.push(text);
+      },
+      onCommit(text) {
+        commits.push(text);
+      },
+      onAudioEnded() {},
+      onReady() {
+        ready += 1;
+      },
+      onError(message) {
+        errors.push(message);
+      },
+    },
+    { mode: "smart", language: "fa-IR" },
+  );
+
+  return {
+    session,
+    drafts,
+    commits,
+    errors,
+    pcm,
+    ready: () => ready,
+    connectCalls: () => connectCalls,
+    async settleConnect() {
+      await Promise.resolve();
+      await Promise.resolve();
+    },
+    emit(event: GeminiShapedEvent) {
+      emitEvent?.(event);
+    },
+    fail(message: string) {
+      failConnect?.(message);
+    },
+  };
+}
+
+test("interim Gemini payloads become Drafts", async () => {
+  const { emit, drafts, settleConnect } = createHarness();
+  await settleConnect();
+  emit({ type: "interim", text: "hel" });
+  expect(drafts).toEqual(["hel"]);
+});
+
+test("finished false is a Draft and finished true is a Commit", async () => {
+  const { emit, drafts, commits, settleConnect } = createHarness();
+  await settleConnect();
+  emit({ finished: false, text: "hel" });
+  emit({ finished: true, text: "hello" });
+  expect(drafts).toEqual(["hel"]);
+  expect(commits).toEqual(["hello"]);
+});
+
+test("start without a Key errors and does not connect", async () => {
+  const harness = createHarness({ key: null });
+  await harness.settleConnect();
+  expect(harness.errors).toEqual([KEY_MISSING_MESSAGE]);
+  expect(harness.connectCalls()).toEqual([]);
+});
+
+test("invalid Key from Gemini is a visible error", async () => {
+  const { fail, errors, settleConnect } = createHarness();
+  await settleConnect();
+  fail("API key not valid. Please pass a valid API key.");
+  expect(errors).toEqual([INVALID_KEY_MESSAGE]);
+});
+
+test("mode and language are sent at connect, not later", async () => {
+  const { settleConnect, connectCalls } = createHarness();
+  await settleConnect();
+  expect(connectCalls()).toEqual([
+    { mode: "smart", language: "fa-IR", apiKey: "test-key" },
+  ]);
+});
+
+test("PCM sent before connect is forwarded once live", async () => {
+  const { session, pcm, settleConnect } = createHarness();
+  const chunk = new Uint8Array([1, 2]);
+  session.sendPcm(chunk);
+  expect(pcm).toEqual([]);
+  await settleConnect();
+  expect(pcm).toEqual([chunk]);
+});

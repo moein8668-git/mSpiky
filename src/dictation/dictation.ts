@@ -16,10 +16,19 @@ export type SessionListener = {
   onDraft(text: string): void;
   onCommit(text: string): void;
   onAudioEnded(): void;
+  onReady?(): void;
+  onError?(message: string): void;
+};
+
+export type TranscriptMode = "smart" | "verbatim";
+
+export type SessionStartOptions = {
+  mode?: TranscriptMode;
+  language?: string;
 };
 
 export type SessionAdapter = {
-  start(listener: SessionListener): void;
+  start(listener: SessionListener, options?: SessionStartOptions): void;
   sendPcm(pcm: Uint8Array): void;
   sendEndOfAudio(): void;
   stop(): void;
