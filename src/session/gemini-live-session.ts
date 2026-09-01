@@ -38,12 +38,60 @@ export function createGeminiLiveSession(deps: {
   let transport: LiveTransport | null = null;
   let generation = 0;
   const queued: Uint8Array[] = [];
+  let liveMode: TranscriptMode = "smart";
+  let liveLanguage: string | undefined;
+  let holdAfterAudioEnd = false;
 
   function deliver(event: GeminiShapedEvent) {
     const mapped = mapGeminiEvent(event);
     if (!mapped || !listener) return;
     if (mapped.kind === "draft") listener.onDraft(mapped.text);
     else listener.onCommit(mapped.text);
+  }
+
+  function connectGeneration(current: number, notifyReconnect: boolean) {
+    const apiKey = deps.getKey()?.trim() ?? "";
+    if (!apiKey) {
+      listener?.onError?.(KEY_MISSING_MESSAGE);
+      return;
+    }
+
+    void deps
+      .connect(
+        { apiKey, mode: liveMode, language: liveLanguage },
+        {
+          onEvent: deliver,
+          onError(message) {
+            if (current !== generation) return;
+            listener?.onError?.(mapSessionError(message));
+          },
+          onClose() {
+            if (current !== generation) return;
+            const hadTransport = transport !== null;
+            transport = null;
+            if (holdAfterAudioEnd) return;
+            if (!hadTransport) return;
+            connectGeneration(current, true);
+          },
+        },
+      )
+      .then((nextTransport) => {
+        if (current !== generation) {
+          nextTransport.close();
+          return;
+        }
+        transport = nextTransport;
+        for (const chunk of queued.splice(0)) {
+          transport.sendPcm(chunk);
+        }
+        if (notifyReconnect) listener?.onReconnected?.();
+        else listener?.onReady?.();
+      })
+      .catch((error) => {
+        if (current !== generation) return;
+        const message = error instanceof Error ? error.message : String(error);
+        listener?.onError?.(mapSessionError(message));
+      });
   }
 
   return {
@@ -53,6 +101,9 @@ export function createGeminiLiveSession(deps: {
       transport?.close();
       transport = null;
       queued.length = 0;
+      holdAfterAudioEnd = false;
+      liveMode = options?.mode === "verbatim" ? "verbatim" : "smart";
+      liveLanguage = options?.language?.trim() || undefined;
 
       const apiKey = deps.getKey()?.trim() ?? "";
       if (!apiKey) {
@@ -60,48 +111,21 @@ export function createGeminiLiveSession(deps: {
         return;
       }
 
-      const mode: TranscriptMode =
-        options?.mode === "verbatim" ? "verbatim" : "smart";
-      const language = options?.language?.trim() || undefined;
-
-      void deps
-        .connect(
-          { apiKey, mode, language },
-          {
-            onEvent: deliver,
-            onError(message) {
-              if (current !== generation) return;
-              listener?.onError?.(mapSessionError(message));
-            },
-            onClose() {
-              if (current !== generation) return;
-              transport = null;
-            },
-          },
-        )
-        .then((nextTransport) => {
-          if (current !== generation) {
-            nextTransport.close();
-            return;
-          }
-          transport = nextTransport;
-          for (const chunk of queued.splice(0)) {
-            transport.sendPcm(chunk);
-          }
-          listener?.onReady?.();
-        })
-        .catch((error) => {
-          if (current !== generation) return;
-          const message = error instanceof Error ? error.message : String(error);
-          listener?.onError?.(mapSessionError(message));
-        });
+      connectGeneration(current, false);
     },
     sendPcm(pcm) {
       if (transport) transport.sendPcm(pcm);
       else queued.push(pcm);
     },
     sendEndOfAudio() {
+      holdAfterAudioEnd = true;
       transport?.sendEndOfAudio();
+    },
+    resume() {
+      if (!listener) return;
+      holdAfterAudioEnd = false;
+      if (transport) return;
+      connectGeneration(generation, false);
     },
     stop() {
       generation += 1;

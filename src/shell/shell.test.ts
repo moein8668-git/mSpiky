@@ -277,4 +277,5 @@ test("Studio and Overlay chrome is English", () => {
     "Settings, files, and history will live here.",
   );
   expect(overlayChrome.statusLabel.listening).toBe("Listening");
+  expect(overlayChrome.reconnectNote).toContain("reconnected");
 });

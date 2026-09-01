@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 import { createDictation } from "./dictation";
-import type { SessionListener } from "./dictation";
+import type { SessionListener, SessionStartOptions } from "./dictation";
 import { createFakeSession } from "./fake-session";
 
 function createHarness() {
@@ -335,4 +335,107 @@ test("skipped Flush keeps Commits on the Overlay", async () => {
   expect(dictation.snapshot().error).toBe("Target window changed. Flush skipped.");
   expect(dictation.snapshot().commits).toEqual(["hello"]);
   expect(dictation.snapshot().status).toBe("paused");
+});
+
+test("invalid Key from Session is an Overlay error", () => {
+  let listener: SessionListener | undefined;
+  const sessionCalls = { start: 0, stop: 0 };
+  const dictation = createDictation({
+    session: {
+      start(next) {
+        sessionCalls.start += 1;
+        listener = next;
+      },
+      sendPcm() {},
+      sendEndOfAudio() {},
+      stop() {
+        sessionCalls.stop += 1;
+      },
+    },
+    caretInject: {
+      beginDictation() {},
+      inject() {
+        return { kind: "pasted" as const };
+      },
+    },
+  });
+
+  dictation.start();
+  listener?.onError?.("Your Key is invalid. Check Studio Settings.");
+
+  expect(dictation.snapshot()).toMatchObject({
+    status: "idle",
+    overlayVisible: true,
+    error: "Your Key is invalid. Check Studio Settings.",
+  });
+  expect(sessionCalls.stop).toBe(1);
+});
+
+test("missing mic is an Overlay error", () => {
+  const { dictation, sessionCalls } = createHarness();
+
+  dictation.start();
+  dictation.fail("No microphone found.");
+
+  expect(dictation.snapshot()).toMatchObject({
+    status: "idle",
+    overlayVisible: true,
+    error: "No microphone found.",
+  });
+  expect(sessionCalls.stop).toBe(1);
+});
+
+test("Session reconnect shows a short Overlay note", () => {
+  let listener: SessionListener | undefined;
+  const dictation = createDictation({
+    session: {
+      start(next) {
+        listener = next;
+      },
+      sendPcm() {},
+      sendEndOfAudio() {},
+      stop() {},
+    },
+    caretInject: {
+      beginDictation() {},
+      inject() {
+        return { kind: "pasted" as const };
+      },
+    },
+  });
+
+  dictation.start();
+  listener?.onReconnected?.();
+
+  expect(dictation.snapshot().error).toBe(
+    "Session reconnected. A phrase may have split.",
+  );
+  expect(dictation.snapshot().status).toBe("listening");
+
+  listener?.onDraft("hel");
+  expect(dictation.snapshot().error).toBeNull();
+});
+
+test("start passes stored mode and language into the Session", () => {
+  const options: SessionStartOptions[] = [];
+  const dictation = createDictation({
+    session: {
+      start(_next, startOptions) {
+        options.push(startOptions ?? {});
+      },
+      sendPcm() {},
+      sendEndOfAudio() {},
+      stop() {},
+    },
+    caretInject: {
+      beginDictation() {},
+      inject() {
+        return { kind: "pasted" as const };
+      },
+    },
+    startOptions: () => ({ mode: "verbatim", language: "fa-IR" }),
+  });
+
+  dictation.start();
+  expect(options).toEqual([{ mode: "verbatim", language: "fa-IR" }]);
 });

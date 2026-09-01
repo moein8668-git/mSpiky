@@ -25,6 +25,7 @@
     "src/secrets/messages.ts",
     "src/session/gemini-live-session.ts",
     "src/session/messages.ts",
+    "src/settings/session-settings.ts",
     "src/studio/studio-captions.ts"
   ]
 }

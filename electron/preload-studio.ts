@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type { SessionStartOptions } from "../src/dictation/dictation";
+import type { SessionSettings } from "../src/settings/session-settings";
 import type { StudioCaptionSnapshot } from "../src/studio/studio-captions";
 
 contextBridge.exposeInMainWorld("mspikyStudio", {
@@ -20,6 +21,12 @@ contextBridge.exposeInMainWorld("mspikyStudio", {
   },
   startCaptions(options: SessionStartOptions) {
     return ipcRenderer.invoke("mspiky:studio-start", options) as Promise<void>;
+  },
+  getSettings() {
+    return ipcRenderer.invoke("mspiky:settings-get") as Promise<SessionSettings>;
+  },
+  saveSettings(settings: Partial<SessionSettings>) {
+    return ipcRenderer.invoke("mspiky:settings-save", settings) as Promise<void>;
   },
   stopCaptions() {
     return ipcRenderer.invoke("mspiky:studio-stop") as Promise<void>;

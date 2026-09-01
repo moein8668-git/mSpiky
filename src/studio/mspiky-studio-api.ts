@@ -1,4 +1,5 @@
 import type { SessionStartOptions } from "../dictation/dictation";
+import type { SessionSettings } from "../settings/session-settings";
 import type { StudioCaptionSnapshot } from "./studio-captions";
 
 export type MspikyStudioApi = {
@@ -10,6 +11,8 @@ export type MspikyStudioApi = {
   failCaptions(message: string): Promise<void>;
   sendPcm(pcm: Uint8Array): void;
   onCaptions(listener: (snapshot: StudioCaptionSnapshot) => void): () => void;
+  getSettings(): Promise<SessionSettings>;
+  saveSettings(settings: Partial<SessionSettings>): Promise<void>;
 };
 
 declare global {

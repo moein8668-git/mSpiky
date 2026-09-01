@@ -9,11 +9,13 @@ function createHarness(options?: { key?: string | null }) {
   const commits: string[] = [];
   const errors: string[] = [];
   const pcm: Uint8Array[] = [];
+  const reconnects: number[] = [];
   let ready = 0;
   let connectCalls: Array<{ mode: string; language?: string; apiKey: string }> =
     [];
   let emitEvent: ((event: GeminiShapedEvent) => void) | undefined;
   let failConnect: ((message: string) => void) | undefined;
+  let closeConnect: (() => void) | undefined;
 
   const session = createGeminiLiveSession({
     getKey() {
@@ -27,6 +29,7 @@ function createHarness(options?: { key?: string | null }) {
       });
       emitEvent = callbacks.onEvent;
       failConnect = callbacks.onError;
+      closeConnect = () => callbacks.onClose("timeout");
       return {
         sendPcm(chunk) {
           pcm.push(chunk);
@@ -52,6 +55,9 @@ function createHarness(options?: { key?: string | null }) {
       onError(message) {
         errors.push(message);
       },
+      onReconnected() {
+        reconnects.push(1);
+      },
     },
     { mode: "smart", language: "fa-IR" },
   );
@@ -74,6 +80,10 @@ function createHarness(options?: { key?: string | null }) {
     fail(message: string) {
       failConnect?.(message);
     },
+    drop() {
+      closeConnect?.();
+    },
+    reconnects: () => reconnects,
   };
 }
 
@@ -122,4 +132,42 @@ test("PCM sent before connect is forwarded once live", async () => {
   expect(pcm).toEqual([]);
   await settleConnect();
   expect(pcm).toEqual([chunk]);
+});
+
+test("an unexpected close reconnects instead of dying", async () => {
+  const harness = createHarness();
+  await harness.settleConnect();
+  expect(harness.connectCalls()).toHaveLength(1);
+
+  harness.drop();
+  await harness.settleConnect();
+
+  expect(harness.connectCalls()).toHaveLength(2);
+  expect(harness.reconnects()).toEqual([1]);
+  expect(harness.errors).toEqual([]);
+});
+
+test("stop prevents reconnect after close", async () => {
+  const harness = createHarness();
+  await harness.settleConnect();
+  harness.session.stop();
+  harness.drop();
+  await harness.settleConnect();
+  expect(harness.connectCalls()).toHaveLength(1);
+  expect(harness.reconnects()).toEqual([]);
+});
+
+test("end-of-audio close waits for resume instead of reconnecting", async () => {
+  const harness = createHarness();
+  await harness.settleConnect();
+  harness.session.sendEndOfAudio();
+  harness.drop();
+  await harness.settleConnect();
+  expect(harness.connectCalls()).toHaveLength(1);
+  expect(harness.reconnects()).toEqual([]);
+
+  harness.session.resume?.();
+  await harness.settleConnect();
+  expect(harness.connectCalls()).toHaveLength(2);
+  expect(harness.reconnects()).toEqual([]);
 });

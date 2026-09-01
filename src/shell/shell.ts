@@ -1,5 +1,6 @@
 import type { OverlaySnapshot } from "../dictation/dictation";
 import { KEY_MISSING_MESSAGE } from "../secrets/messages";
+import { SESSION_RECONNECT_NOTE } from "../session/messages";
 
 export const studioChrome = {
   heading: "Studio",
@@ -39,6 +40,7 @@ export const overlayChrome = {
     listening: "Listening",
     paused: "Paused",
   },
+  reconnectNote: SESSION_RECONNECT_NOTE,
 };
 
 export const DEFAULT_DICTATION_HOTKEY = "Control+Shift+Space";

@@ -9,10 +9,10 @@ import {
   type MenuItemConstructorOptions,
 } from "electron";
 import path from "node:path";
-import { createDemoOverlaySession } from "../src/dictation/demo-overlay-session";
 import { caretInjectFromPasteFirst } from "../src/dictation/caret-inject-adapter";
 import { createDictation } from "../src/dictation/dictation";
 import { createGeminiLiveSession } from "../src/session/gemini-live-session";
+import { NO_MIC_MESSAGE } from "../src/session/messages";
 import {
   createShell,
   type TrayItem,
@@ -20,9 +20,9 @@ import {
 import { createStudioCaptions } from "../src/studio/studio-captions";
 import { createElectronCaretInject } from "./caret-inject";
 import { createElectronKeyStore } from "./secrets/key-store";
+import { createElectronSessionSettings } from "./settings/session-settings";
 import { connectGeminiLive } from "./session/connect-gemini-live";
 import { overlayWindowOptions, studioWindowOptions } from "./window-options";
-import { NO_MIC_MESSAGE } from "../src/session/messages";
 
 const DEV_URL = "http://127.0.0.1:5173";
 
@@ -42,31 +42,41 @@ void app.whenReady().then(() => {
   const preloadPath = path.join(__dirname, "preload.cjs");
   const studioPreloadPath = path.join(__dirname, "preload-studio.cjs");
   const keyStore = createElectronKeyStore();
+  const sessionSettings = createElectronSessionSettings();
   const studio = new BrowserWindow(studioWindowOptions(studioPreloadPath));
   const overlay = new BrowserWindow(overlayWindowOptions(preloadPath));
   void studio.loadURL(rendererUrl("studio"));
   void overlay.loadURL(rendererUrl("overlay"));
 
-  studio.webContents.session.setPermissionRequestHandler(
-    (_webContents, permission, callback) => {
-      callback(permission === "media");
-    },
+  const allowMedia = (_webContents: unknown, permission: string, callback?: (allow: boolean) => void) => {
+    const allow = permission === "media";
+    if (callback) callback(allow);
+    return allow;
+  };
+  studio.webContents.session.setPermissionRequestHandler((wc, permission, callback) => {
+    allowMedia(wc, permission, callback);
+  });
+  studio.webContents.session.setPermissionCheckHandler((_wc, permission) =>
+    permission === "media",
   );
-  studio.webContents.session.setPermissionCheckHandler(
-    (_webContents, permission) => permission === "media",
+  overlay.webContents.session.setPermissionRequestHandler((wc, permission, callback) => {
+    allowMedia(wc, permission, callback);
+  });
+  overlay.webContents.session.setPermissionCheckHandler((_wc, permission) =>
+    permission === "media",
   );
 
   overlay.setAlwaysOnTop(true, "screen-saver");
   overlay.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
 
-  const liveSession = createGeminiLiveSession({
+  const liveDeps = {
     getKey() {
       return keyStore.getKey();
     },
     connect: connectGeminiLive,
-  });
+  };
   const captions = createStudioCaptions({
-    session: liveSession,
+    session: createGeminiLiveSession(liveDeps),
     onSnapshotChange(snapshot) {
       if (!studio.isDestroyed()) {
         studio.webContents.send("mspiky:studio-captions", snapshot);
@@ -76,13 +86,24 @@ void app.whenReady().then(() => {
 
   const pasteFirst = createElectronCaretInject();
   let shell: ReturnType<typeof createShell>;
-  const dictation = createDictation({
-    session: createDemoOverlaySession(),
+  const dictationCore = createDictation({
+    session: createGeminiLiveSession(liveDeps),
     caretInject: caretInjectFromPasteFirst(pasteFirst),
+    startOptions() {
+      const settings = sessionSettings.get();
+      return { mode: settings.mode, language: settings.language };
+    },
     onSnapshotChange: () => {
       shell?.refreshOverlay();
     },
   });
+  const dictation = {
+    ...dictationCore,
+    start() {
+      captions.stop();
+      return dictationCore.start();
+    },
+  };
 
   let quitting = false;
   const tray = new Tray(nativeImage.createFromBuffer(TRAY_PNG));
@@ -122,6 +143,7 @@ void app.whenReady().then(() => {
       quit() {
         quitting = true;
         captions.stop();
+        void dictation.stop();
         globalShortcut.unregisterAll();
         app.quit();
       },
@@ -182,6 +204,7 @@ void app.whenReady().then(() => {
         ? options.language
         : "";
     captions.start({ mode, language });
+    sessionSettings.save({ mode, language });
   });
 
   ipcMain.handle("mspiky:studio-stop", () => {
@@ -192,18 +215,37 @@ void app.whenReady().then(() => {
     captions.fail(typeof message === "string" ? message : NO_MIC_MESSAGE);
   });
 
+  ipcMain.handle("mspiky:settings-get", () => sessionSettings.get());
+
+  ipcMain.handle("mspiky:settings-save", (_event, value: unknown) => {
+    if (!value || typeof value !== "object") return;
+    const record = value as Record<string, unknown>;
+    sessionSettings.save({
+      micId: typeof record.micId === "string" ? record.micId : undefined,
+      language: typeof record.language === "string" ? record.language : undefined,
+      mode: record.mode === "verbatim" || record.mode === "smart" ? record.mode : undefined,
+    });
+  });
+
+  function asPcm(data: unknown): Uint8Array | null {
+    if (data instanceof Uint8Array) return data;
+    if (data instanceof ArrayBuffer) return new Uint8Array(data);
+    if (Buffer.isBuffer(data)) return new Uint8Array(data);
+    return null;
+  }
+
   ipcMain.on("mspiky:studio-pcm", (_event, data: unknown) => {
-    if (data instanceof Uint8Array) {
-      captions.sendPcm(data);
-      return;
-    }
-    if (data instanceof ArrayBuffer) {
-      captions.sendPcm(new Uint8Array(data));
-      return;
-    }
-    if (Buffer.isBuffer(data)) {
-      captions.sendPcm(new Uint8Array(data));
-    }
+    const pcm = asPcm(data);
+    if (pcm) captions.sendPcm(pcm);
+  });
+
+  ipcMain.on("mspiky:overlay-pcm", (_event, data: unknown) => {
+    const pcm = asPcm(data);
+    if (pcm) dictation.sendPcm(pcm);
+  });
+
+  ipcMain.on("mspiky:overlay-mic-fail", () => {
+    dictation.fail(NO_MIC_MESSAGE);
   });
 
   studio.on("close", (event) => {

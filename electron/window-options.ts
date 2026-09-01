@@ -19,7 +19,7 @@ export function overlayWindowOptions(
 
   return {
     width: 520,
-    height: 72,
+    height: 88,
     frame: false,
     transparent: true,
     skipTaskbar: true,

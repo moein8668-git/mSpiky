@@ -29,11 +29,18 @@ export function Studio() {
   const [mics, setMics] = useState<MicDevice[]>([]);
   const [captions, setCaptions] = useState<StudioCaptionSnapshot>(idleCaptions);
   const captureRef = useRef<StudioMicHandle | null>(null);
+  const settingsReady = useRef(false);
 
   useEffect(() => {
     const api = window.mspikyStudio;
     if (!api) return;
     void api.hasKey().then(setHasKey);
+    void api.getSettings().then((settings) => {
+      setMode(settings.mode);
+      setLanguage(settings.language);
+      setMicId(settings.micId);
+      settingsReady.current = true;
+    });
     const stopMissing = api.onKeyMissing((message) => setNotice(message));
     const stopCaptions = api.onCaptions(setCaptions);
     return () => {
@@ -41,6 +48,11 @@ export function Studio() {
       stopCaptions();
     };
   }, []);
+
+  useEffect(() => {
+    if (!settingsReady.current) return;
+    void window.mspikyStudio?.saveSettings({ mode, language, micId });
+  }, [mode, language, micId]);
 
   useEffect(() => {
     void refreshMics();

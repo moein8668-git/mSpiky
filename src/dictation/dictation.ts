@@ -1,5 +1,6 @@
 import type { FlushResult } from "../caret-inject/paste-first";
 import { flushErrorMessage } from "../caret-inject/types";
+import { SESSION_RECONNECT_NOTE } from "../session/messages";
 
 export type OverlayStatus = "idle" | "listening" | "paused";
 
@@ -18,6 +19,7 @@ export type SessionListener = {
   onAudioEnded(): void;
   onReady?(): void;
   onError?(message: string): void;
+  onReconnected?(): void;
 };
 
 export type TranscriptMode = "smart" | "verbatim";
@@ -31,6 +33,7 @@ export type SessionAdapter = {
   start(listener: SessionListener, options?: SessionStartOptions): void;
   sendPcm(pcm: Uint8Array): void;
   sendEndOfAudio(): void;
+  resume?(): void;
   stop(): void;
 };
 
@@ -42,6 +45,7 @@ export type CaretInjectAdapter = {
 export function createDictation(adapters: {
   session: SessionAdapter;
   caretInject: CaretInjectAdapter;
+  startOptions?: () => SessionStartOptions;
   onSnapshotChange?: (snapshot: OverlaySnapshot) => void;
 }) {
   const idleSnapshot = (): OverlaySnapshot => ({
@@ -123,7 +127,7 @@ export function createDictation(adapters: {
 
   const listener: SessionListener = {
     onDraft(text) {
-      snapshot = { ...snapshot, draft: text };
+      snapshot = { ...snapshot, draft: text, error: null };
       publish();
     },
     onCommit(text) {
@@ -131,6 +135,7 @@ export function createDictation(adapters: {
         ...snapshot,
         draft: "",
         commits: [...snapshot.commits, text],
+        error: null,
       };
       publish();
       void scheduleSettle();
@@ -138,6 +143,22 @@ export function createDictation(adapters: {
     onAudioEnded() {
       audioSettled = true;
       void scheduleSettle();
+    },
+    onError(message) {
+      adapters.session.stop();
+      snapshot = {
+        ...snapshot,
+        status: "idle",
+        error: message,
+        overlayVisible: true,
+        meter: 0,
+      };
+      publish();
+    },
+    onReconnected() {
+      if (snapshot.status !== "listening") return;
+      snapshot = { ...snapshot, error: SESSION_RECONNECT_NOTE };
+      publish();
     },
   };
 
@@ -174,7 +195,7 @@ export function createDictation(adapters: {
       };
       audioSettled = false;
       adapters.caretInject.beginDictation();
-      adapters.session.start(listener);
+      adapters.session.start(listener, adapters.startOptions?.());
       publish();
     },
     showKeyMissing(message: string) {
@@ -188,6 +209,17 @@ export function createDictation(adapters: {
       };
       publish();
     },
+    fail(message: string) {
+      adapters.session.stop();
+      snapshot = {
+        ...snapshot,
+        status: "idle",
+        error: message,
+        overlayVisible: true,
+        meter: 0,
+      };
+      publish();
+    },
     pause() {
       if (snapshot.status !== "listening") return Promise.resolve();
       pendingFlush = "pause";
@@ -198,6 +230,7 @@ export function createDictation(adapters: {
       if (snapshot.status !== "paused") return;
       audioSettled = false;
       snapshot = { ...snapshot, status: "listening", error: null };
+      adapters.session.resume?.();
       publish();
     },
     stop,
