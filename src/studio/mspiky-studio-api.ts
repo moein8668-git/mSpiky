@@ -16,6 +16,7 @@ export type MspikyStudioApi = {
   saveSettings(settings: Partial<SessionSettings>): Promise<void>;
   listHistory(): Promise<StudioHistoryEntry[]>;
   clearHistory(): Promise<void>;
+  onHistoryUpdated(listener: () => void): () => void;
 };
 
 declare global {

@@ -3,7 +3,9 @@ import { createDictation } from "./dictation";
 import type { SessionListener, SessionStartOptions } from "./dictation";
 import { createFakeSession } from "./fake-session";
 
-function createHarness() {
+function createHarness(options?: {
+  onFlush?: (text: string, reason: "pause" | "stop") => void;
+}) {
   let listener: SessionListener | undefined;
   const flushes: string[] = [];
   const sessionCalls = {
@@ -36,6 +38,7 @@ function createHarness() {
         return { kind: "pasted" as const };
       },
     },
+    onFlush: options?.onFlush,
   });
   return {
     dictation,
@@ -193,6 +196,36 @@ test("Stop Flushes then ends Dictation and hides Overlay", async () => {
   expect(sessionCalls.stop).toBe(1);
 });
 
+test("Stop records Flushed text for History before ending Dictation", async () => {
+  const flushed: Array<{ text: string; reason: "pause" | "stop" }> = [];
+  const { dictation, emitCommit } = createHarness({
+    onFlush(text, reason) {
+      flushed.push({ text, reason });
+    },
+  });
+
+  dictation.start();
+  emitCommit("hello there");
+  await dictation.stop();
+
+  expect(flushed).toEqual([{ text: "hello there", reason: "stop" }]);
+});
+
+test("Pause records Flushed text for History", async () => {
+  const flushed: Array<{ text: string; reason: "pause" | "stop" }> = [];
+  const { dictation, emitCommit } = createHarness({
+    onFlush(text, reason) {
+      flushed.push({ text, reason });
+    },
+  });
+
+  dictation.start();
+  emitCommit("hello");
+  await dictation.pause();
+
+  expect(flushed).toEqual([{ text: "hello", reason: "pause" }]);
+});
+
 test("a second start while Dictation is live Stops instead of opening another", async () => {
   const { dictation, emitCommit, flushes, sessionCalls } = createHarness();
 
@@ -204,6 +237,17 @@ test("a second start while Dictation is live Stops instead of opening another", 
   expect(dictation.snapshot().overlayVisible).toBe(false);
   expect(sessionCalls.start).toBe(1);
   expect(sessionCalls.stop).toBe(1);
+});
+
+test("Stop hides Overlay immediately when no Draft is moving", async () => {
+  const { dictation, emitCommit } = createHarness();
+
+  dictation.start();
+  emitCommit("hello");
+  const stopPromise = dictation.stop();
+
+  expect(dictation.snapshot().overlayVisible).toBe(false);
+  await stopPromise;
 });
 
 test("Stop does not Flush while a Draft is still moving", async () => {

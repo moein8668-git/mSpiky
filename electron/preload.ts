@@ -21,4 +21,16 @@ contextBridge.exposeInMainWorld("mspiky", {
   captureSettings() {
     return ipcRenderer.invoke("mspiky:settings-get") as Promise<SessionSettings>;
   },
+  setClickThrough(pass: boolean) {
+    ipcRenderer.sendSync("mspiky:overlay-click-through", pass);
+  },
+  startOverlayDrag(screenX: number, screenY: number) {
+    ipcRenderer.send("mspiky:overlay-drag-start", screenX, screenY);
+  },
+  moveOverlayDrag(screenX: number, screenY: number) {
+    ipcRenderer.send("mspiky:overlay-drag-move", screenX, screenY);
+  },
+  endOverlayDrag() {
+    ipcRenderer.send("mspiky:overlay-drag-end");
+  },
 });

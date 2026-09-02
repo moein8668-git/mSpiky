@@ -18,7 +18,8 @@ export function createElectronStudioHistory() {
           if (typeof record.text !== "string") return [];
           if (typeof record.createdAt !== "string") return [];
           const mode = record.mode === "verbatim" ? "verbatim" : "smart";
-          return [{ id: record.id, text: record.text, mode, createdAt: record.createdAt }];
+          const source = record.source === "overlay" ? "overlay" : "studio";
+          return [{ id: record.id, text: record.text, mode, source, createdAt: record.createdAt }];
         });
       } catch {
         return [];

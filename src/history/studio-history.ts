@@ -1,9 +1,12 @@
 import type { TranscriptMode } from "../dictation/dictation";
 
+export type HistorySource = "studio" | "overlay";
+
 export type StudioHistoryEntry = {
   id: string;
   text: string;
   mode: TranscriptMode;
+  source: HistorySource;
   createdAt: string;
 };
 
@@ -26,13 +29,14 @@ export function createStudioHistory(deps: {
     list(): StudioHistoryEntry[] {
       return deps.read();
     },
-    append(text: string, mode: TranscriptMode) {
+    append(text: string, mode: TranscriptMode, source: HistorySource = "studio") {
       const trimmed = text.trim();
       if (!trimmed) return null;
       const entry: StudioHistoryEntry = {
         id: id(),
         text: trimmed,
         mode,
+        source,
         createdAt: now(),
       };
       const next = [entry, ...deps.read()].slice(0, maxEntries);

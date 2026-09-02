@@ -5,6 +5,7 @@ import {
   ipcMain,
   Menu,
   nativeImage,
+  screen,
   Tray,
   type MenuItemConstructorOptions,
 } from "electron";
@@ -21,6 +22,8 @@ import { createStudioCaptions } from "../src/studio/studio-captions";
 import { createElectronCaretInject } from "./caret-inject";
 import { createElectronKeyStore } from "./secrets/key-store";
 import { createElectronSessionSettings } from "./settings/session-settings";
+import { createElectronOverlayPositionStore } from "./settings/overlay-position";
+import { clampOverlayPosition, resolveOverlayPosition } from "../src/settings/overlay-position";
 import { createElectronStudioHistory } from "./history/studio-history";
 import { studioHistoryText } from "../src/history/studio-history";
 import { connectGeminiLive } from "./session/connect-gemini-live";
@@ -32,6 +35,9 @@ const TRAY_PNG = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGUlEQVQ4T2P8z8Dwn4EIwDiqYHRtwPgfAKiuB/3XYpGxAAAAAElFTkSuQmCC",
   "base64",
 );
+
+const OVERLAY_WIDTH = 640;
+const OVERLAY_HEIGHT = 72;
 
 function rendererUrl(hash: "studio" | "overlay") {
   if (app.isPackaged) {
@@ -45,6 +51,7 @@ void app.whenReady().then(() => {
   const studioPreloadPath = path.join(__dirname, "preload-studio.cjs");
   const keyStore = createElectronKeyStore();
   const sessionSettings = createElectronSessionSettings();
+  const overlayPosition = createElectronOverlayPositionStore();
   const studioHistory = createElectronStudioHistory();
   const studio = new BrowserWindow(studioWindowOptions(studioPreloadPath));
   const overlay = new BrowserWindow(overlayWindowOptions(preloadPath));
@@ -71,7 +78,33 @@ void app.whenReady().then(() => {
 
   overlay.setAlwaysOnTop(true, "screen-saver");
   overlay.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-  overlay.setIgnoreMouseEvents(true);
+  overlay.setIgnoreMouseEvents(true, { forward: true });
+
+  let overlayDragOffset: { x: number; y: number } | null = null;
+
+  function overlaySize() {
+    return { width: OVERLAY_WIDTH, height: OVERLAY_HEIGHT };
+  }
+
+  function syncOverlayBounds() {
+    if (overlay.isDestroyed()) return;
+    const saved = overlayPosition.get();
+    const anchor = saved ?? { x: 0, y: 0 };
+    const display = screen.getDisplayMatching({
+      ...anchor,
+      ...overlaySize(),
+    });
+    const point = resolveOverlayPosition(saved, display.workArea, overlaySize());
+    overlay.setBounds({ ...point, ...overlaySize() });
+  }
+
+  function setOverlayClickThrough(pass: boolean) {
+    if (overlay.isDestroyed()) return;
+    if (pass) overlay.setIgnoreMouseEvents(true, { forward: true });
+    else overlay.setIgnoreMouseEvents(false);
+  }
+
+  syncOverlayBounds();
 
   const liveDeps = {
     getKey() {
@@ -96,6 +129,9 @@ void app.whenReady().then(() => {
     startOptions() {
       const settings = sessionSettings.get();
       return { mode: settings.mode };
+    },
+    onFlush(text) {
+      appendHistory(text, sessionSettings.get().mode, "overlay");
     },
     onSnapshotChange: () => {
       shell?.refreshOverlay();
@@ -124,6 +160,7 @@ void app.whenReady().then(() => {
     },
     overlay: {
       show() {
+        syncOverlayBounds();
         overlay.showInactive();
       },
       hide() {
@@ -196,13 +233,28 @@ void app.whenReady().then(() => {
     sessionSettings.save({ mode });
   });
 
+  function pushHistoryUpdate() {
+    if (!studio.isDestroyed()) {
+      studio.webContents.send("mspiky:history-updated");
+    }
+  }
+
+  function appendHistory(
+    text: string,
+    mode: "smart" | "verbatim",
+    source: "studio" | "overlay",
+  ) {
+    if (!studioHistory.append(text, mode, source)) return;
+    pushHistoryUpdate();
+  }
+
   function stopStudioCaptionsWithHistory() {
     const snapshot = captions.snapshot();
     if (snapshot.status === "idle") return;
     const text = studioHistoryText(snapshot.commits);
     const mode = snapshot.mode;
     captions.stop();
-    if (text) studioHistory.append(text, mode);
+    if (text) appendHistory(text, mode, "studio");
   }
 
   ipcMain.handle("mspiky:studio-stop", () => {
@@ -240,6 +292,38 @@ void app.whenReady().then(() => {
   ipcMain.on("mspiky:studio-pcm", (_event, data: unknown) => {
     const pcm = asPcm(data);
     if (pcm) captions.sendPcm(pcm);
+  });
+
+  ipcMain.on("mspiky:overlay-click-through", (event, pass: unknown) => {
+    setOverlayClickThrough(pass !== false);
+    event.returnValue = true;
+  });
+
+  ipcMain.on("mspiky:overlay-drag-start", (_event, screenX: unknown, screenY: unknown) => {
+    if (typeof screenX !== "number" || typeof screenY !== "number") return;
+    const [x, y] = overlay.getPosition();
+    overlayDragOffset = { x: screenX - x, y: screenY - y };
+    setOverlayClickThrough(false);
+  });
+
+  ipcMain.on("mspiky:overlay-drag-move", (_event, screenX: unknown, screenY: unknown) => {
+    if (!overlayDragOffset || typeof screenX !== "number" || typeof screenY !== "number") {
+      return;
+    }
+    const next = {
+      x: screenX - overlayDragOffset.x,
+      y: screenY - overlayDragOffset.y,
+    };
+    const display = screen.getDisplayMatching({ ...next, ...overlaySize() });
+    const point = clampOverlayPosition(next, display.workArea, overlaySize());
+    overlay.setPosition(point.x, point.y);
+  });
+
+  ipcMain.on("mspiky:overlay-drag-end", () => {
+    overlayDragOffset = null;
+    const [x, y] = overlay.getPosition();
+    overlayPosition.save({ x, y });
+    setOverlayClickThrough(true);
   });
 
   ipcMain.on("mspiky:overlay-pcm", (_event, data: unknown) => {

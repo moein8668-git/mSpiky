@@ -4,7 +4,7 @@ import { SESSION_RECONNECT_NOTE } from "../session/messages";
 
 export const studioChrome = {
   heading: "Studio",
-  body: "Settings, captions, and text history.",
+  body: "Settings, captions, and transcript history.",
   keyHeading: "Key",
   keyBody: "Paste your Key from Google AI Studio to store it.",
   keyPlaceholder: "Your Key",
@@ -27,10 +27,13 @@ export const studioChrome = {
   micStart: "Start mic",
   micStop: "Stop",
   historyHeading: "History",
-  historyBody: "Past Studio captions. Text only; audio is never stored.",
+  historyBody:
+    "Past Studio captions and Overlay Dictation. Text only; audio is never stored.",
   historyEmpty: "No history yet.",
   historyClear: "Clear history",
   historyCopy: "Copy",
+  historySourceStudio: "Studio",
+  historySourceOverlay: "Overlay",
 };
 
 export const overlayChrome = {

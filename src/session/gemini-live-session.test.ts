@@ -1,10 +1,13 @@
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import { createGeminiLiveSession } from "./gemini-live-session";
 import type { GeminiShapedEvent } from "../dictation/map-gemini-event";
 import { KEY_MISSING_MESSAGE } from "../secrets/messages";
 import { INVALID_KEY_MESSAGE } from "./messages";
 
-function createHarness(options?: { key?: string | null }) {
+function createHarness(options?: {
+  key?: string | null;
+  audioEndedAfterMs?: number;
+}) {
   const drafts: string[] = [];
   const commits: string[] = [];
   const errors: string[] = [];
@@ -22,7 +25,7 @@ function createHarness(options?: { key?: string | null }) {
     getKey() {
       return options?.key === undefined ? "test-key" : options.key;
     },
-    audioEndedAfterMs: 0,
+    audioEndedAfterMs: options?.audioEndedAfterMs ?? 0,
     async connect(opts, callbacks) {
       connectCalls.push({
         mode: opts.mode,
@@ -182,4 +185,28 @@ test("end-of-audio tells Dictation audio has settled so Flush can run", async ()
   harness.session.sendEndOfAudio();
   await Promise.resolve();
   expect(harness.audioEnded()).toEqual([1]);
+});
+
+test("a Commit after end-of-audio settles audio without waiting for the grace timer", async () => {
+  vi.useFakeTimers();
+  const harness = createHarness({ audioEndedAfterMs: 500 });
+  await harness.settleConnect();
+  harness.session.sendEndOfAudio();
+  harness.emit({ finished: true, text: "hello" });
+  await Promise.resolve();
+  expect(harness.audioEnded()).toEqual([1]);
+  vi.useRealTimers();
+});
+
+test("end-of-audio settles after a short grace period when no Commit arrives", async () => {
+  vi.useFakeTimers();
+  const harness = createHarness({ audioEndedAfterMs: 250 });
+  await harness.settleConnect();
+  harness.session.sendEndOfAudio();
+  await Promise.resolve();
+  expect(harness.audioEnded()).toEqual([]);
+  vi.advanceTimersByTime(250);
+  await Promise.resolve();
+  expect(harness.audioEnded()).toEqual([1]);
+  vi.useRealTimers();
 });

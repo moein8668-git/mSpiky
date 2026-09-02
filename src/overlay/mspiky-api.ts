@@ -6,6 +6,10 @@ export type MspikyOverlayApi = {
   sendPcm(pcm: Uint8Array): void;
   failMic(): void;
   captureSettings(): Promise<SessionSettings>;
+  setClickThrough(pass: boolean): void;
+  startOverlayDrag(screenX: number, screenY: number): void;
+  moveOverlayDrag(screenX: number, screenY: number): void;
+  endOverlayDrag(): void;
 };
 
 declare global {

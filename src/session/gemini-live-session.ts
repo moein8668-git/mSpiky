@@ -41,7 +41,7 @@ export function createGeminiLiveSession(deps: {
   let liveMode: TranscriptMode = "smart";
   let holdAfterAudioEnd = false;
   let audioEndedTimer: ReturnType<typeof setTimeout> | undefined;
-  const audioEndedAfterMs = deps.audioEndedAfterMs ?? 800;
+  const audioEndedAfterMs = deps.audioEndedAfterMs ?? 250;
 
   function clearAudioEndedTimer() {
     if (audioEndedTimer) {
@@ -50,21 +50,28 @@ export function createGeminiLiveSession(deps: {
     }
   }
 
-  function signalAudioEnded() {
+  function notifyAudioEnded() {
     clearAudioEndedTimer();
-    const notify = () => listener?.onAudioEnded();
+    queueMicrotask(() => listener?.onAudioEnded());
+  }
+
+  function scheduleAudioEndedGrace() {
+    clearAudioEndedTimer();
     if (audioEndedAfterMs <= 0) {
-      queueMicrotask(notify);
+      notifyAudioEnded();
       return;
     }
-    audioEndedTimer = setTimeout(notify, audioEndedAfterMs);
+    audioEndedTimer = setTimeout(notifyAudioEnded, audioEndedAfterMs);
   }
 
   function deliver(event: GeminiShapedEvent) {
     const mapped = mapGeminiEvent(event);
     if (!mapped || !listener) return;
     if (mapped.kind === "draft") listener.onDraft(mapped.text);
-    else listener.onCommit(mapped.text);
+    else {
+      listener.onCommit(mapped.text);
+      if (holdAfterAudioEnd) notifyAudioEnded();
+    }
   }
 
   function connectGeneration(current: number, notifyReconnect: boolean) {
@@ -138,7 +145,7 @@ export function createGeminiLiveSession(deps: {
     sendEndOfAudio() {
       holdAfterAudioEnd = true;
       transport?.sendEndOfAudio();
-      signalAudioEnded();
+      scheduleAudioEndedGrace();
     },
     resume() {
       if (!listener) return;

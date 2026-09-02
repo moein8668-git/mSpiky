@@ -14,6 +14,7 @@ const idleSnapshot: OverlaySnapshot = {
 
 export function OverlayApp() {
   const [snapshot, setSnapshot] = useState<OverlaySnapshot>(idleSnapshot);
+  const draggingRef = useRef(false);
   const captureRef = useRef<StudioMicHandle | null>(null);
   const liveRef = useRef(false);
   liveRef.current = snapshot.status === "listening";
@@ -22,6 +23,38 @@ export function OverlayApp() {
     const api = window.mspiky;
     if (!api) return;
     return api.onSnapshot(setSnapshot);
+  }, []);
+
+  useEffect(() => {
+    const api = window.mspiky;
+    if (!api?.setClickThrough) return;
+    let pass = true;
+    const setPass = (next: boolean) => {
+      if (next === pass) return;
+      pass = next;
+      api.setClickThrough(next);
+    };
+
+    function syncClickThrough(event: MouseEvent) {
+      if (draggingRef.current) return;
+      const target = event.target;
+      const onHandle =
+        target instanceof Element &&
+        Boolean(target.closest(".overlay-drag-handle"));
+      setPass(!onHandle);
+    }
+
+    function resetClickThrough() {
+      setPass(true);
+    }
+
+    window.addEventListener("mousemove", syncClickThrough);
+    document.addEventListener("mouseleave", resetClickThrough);
+    return () => {
+      window.removeEventListener("mousemove", syncClickThrough);
+      document.removeEventListener("mouseleave", resetClickThrough);
+      setPass(true);
+    };
   }, []);
 
   useEffect(() => {
@@ -62,5 +95,12 @@ export function OverlayApp() {
     };
   }, [snapshot.status]);
 
-  return <Overlay snapshot={snapshot} />;
+  return (
+    <Overlay
+      snapshot={snapshot}
+      onDragChange={(active) => {
+        draggingRef.current = active;
+      }}
+    />
+  );
 }

@@ -35,6 +35,15 @@ contextBridge.exposeInMainWorld("mspikyStudio", {
   clearHistory() {
     return ipcRenderer.invoke("mspiky:history-clear") as Promise<void>;
   },
+  onHistoryUpdated(listener: () => void) {
+    const handler = () => {
+      listener();
+    };
+    ipcRenderer.on("mspiky:history-updated", handler);
+    return () => {
+      ipcRenderer.removeListener("mspiky:history-updated", handler);
+    };
+  },
   stopCaptions() {
     return ipcRenderer.invoke("mspiky:studio-stop") as Promise<void>;
   },

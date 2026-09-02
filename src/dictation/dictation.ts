@@ -46,6 +46,7 @@ export function createDictation(adapters: {
   caretInject: CaretInjectAdapter;
   startOptions?: () => SessionStartOptions;
   onSnapshotChange?: (snapshot: OverlaySnapshot) => void;
+  onFlush?: (text: string, reason: "pause" | "stop") => void;
 }) {
   const idleSnapshot = (): OverlaySnapshot => ({
     status: "idle",
@@ -93,6 +94,7 @@ export function createDictation(adapters: {
       publish();
       return true;
     }
+    if (pendingFlush) adapters.onFlush?.(text, pendingFlush);
     const result = await Promise.resolve(adapters.caretInject.inject(text));
     const error = flushErrorMessage(result);
     if (result.kind === "skipped") {
@@ -164,6 +166,10 @@ export function createDictation(adapters: {
   async function stop() {
     if (snapshot.status === "idle") return;
     pendingFlush = "stop";
+    if (!snapshot.draft) {
+      snapshot = { ...snapshot, overlayVisible: false };
+      publish();
+    }
     adapters.session.sendEndOfAudio();
     await waitForPendingFlush();
   }

@@ -51,9 +51,13 @@ export function Studio() {
       settingsReady.current = true;
     });
     void loadHistory();
+    const stopHistory = api.onHistoryUpdated(() => {
+      void loadHistory();
+    });
     const stopMissing = api.onKeyMissing((message) => setNotice(message));
     const stopCaptions = api.onCaptions(setCaptions);
     return () => {
+      stopHistory();
       stopMissing();
       stopCaptions();
     };
@@ -326,7 +330,12 @@ export function Studio() {
               >
                 <div className="mb-2 flex items-center justify-between gap-3 text-xs text-mute">
                   <span>{formatHistoryWhen(entry.createdAt)}</span>
-                  <span className="uppercase">{entry.mode}</span>
+                  <span className="uppercase">
+                    {entry.source === "overlay"
+                      ? studioChrome.historySourceOverlay
+                      : studioChrome.historySourceStudio}{" "}
+                    · {entry.mode}
+                  </span>
                 </div>
                 <p className="whitespace-pre-wrap">{entry.text}</p>
                 <button

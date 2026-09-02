@@ -1,0 +1,28 @@
+.overlay-drag-handle {
+  -webkit-app-region: no-drag;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 2rem;
+  height: 2rem;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--color-line);
+  border-radius: 0.375rem;
+  background: var(--color-raised);
+  color: var(--color-mute);
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+
+.overlay-drag-handle:hover {
+  color: var(--color-cream);
+  border-color: var(--color-mute);
+}
+
+.overlay-drag-handle:active {
+  cursor: grabbing;
+  background: var(--color-line);
+}

@@ -273,7 +273,7 @@ test("Studio and Overlay chrome is English", () => {
   expect(studioChrome.captionsBody).toContain("Studio");
   expect(studioChrome.modeSmart).toBe("Smart");
   expect(studioChrome.statusListening).toBe("Listening");
-  expect(studioChrome.body).toBe("Settings, captions, and text history.");
+  expect(studioChrome.body).toBe("Settings, captions, and transcript history.");
   expect(overlayChrome.statusLabel.listening).toBe("Listening");
   expect(overlayChrome.reconnectNote).toContain("reconnected");
 });

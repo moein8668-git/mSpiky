@@ -21,12 +21,13 @@ test("append stores a finished Studio caption session newest first", () => {
     id: () => "entry-1",
   });
 
-  const entry = history.append("hello world", "smart");
+  const entry = history.append("hello world", "smart", "overlay");
 
   expect(entry).toEqual({
     id: "entry-1",
     text: "hello world",
     mode: "smart",
+    source: "overlay",
     createdAt: "2026-09-02T10:00:00.000Z",
   });
   expect(history.list()).toEqual([entry]);
@@ -52,6 +53,7 @@ test("clear removes every History entry", () => {
       id: "a",
       text: "one",
       mode: "smart",
+      source: "studio",
       createdAt: "2026-09-02T10:00:00.000Z",
     },
   ];
