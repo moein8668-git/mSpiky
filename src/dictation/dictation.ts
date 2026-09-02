@@ -26,7 +26,6 @@ export type TranscriptMode = "smart" | "verbatim";
 
 export type SessionStartOptions = {
   mode?: TranscriptMode;
-  language?: string;
 };
 
 export type SessionAdapter = {

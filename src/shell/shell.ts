@@ -25,7 +25,6 @@ export const studioChrome = {
   modeLabel: "Formatting",
   modeSmart: "Smart",
   modeVerbatim: "Verbatim",
-  languageLabel: "Spoken language",
   micStart: "Start mic",
   micStop: "Stop",
 };

@@ -4,7 +4,7 @@ import {
   type SessionSettings,
 } from "./session-settings";
 
-test("defaults are Smart formatting and detect language", () => {
+test("defaults are Smart formatting", () => {
   const settings = createSessionSettings({
     read: () => null,
     write() {},
@@ -12,11 +12,10 @@ test("defaults are Smart formatting and detect language", () => {
   expect(settings.get()).toEqual({
     micId: "",
     mode: "smart",
-    language: "",
   });
 });
 
-test("save replaces mic, mode, and language for the next Session", () => {
+test("save replaces mic and mode for the next Session", () => {
   let stored: SessionSettings | null = null;
   const settings = createSessionSettings({
     read: () => stored,
@@ -25,11 +24,10 @@ test("save replaces mic, mode, and language for the next Session", () => {
     },
   });
 
-  settings.save({ micId: "mic-2", mode: "verbatim", language: "fa-IR" });
+  settings.save({ micId: "mic-2", mode: "verbatim" });
   expect(settings.get()).toEqual({
     micId: "mic-2",
     mode: "verbatim",
-    language: "fa-IR",
   });
   expect(stored).toEqual(settings.get());
 });

@@ -21,7 +21,6 @@ export type LiveConnect = (
   options: {
     apiKey: string;
     mode: TranscriptMode;
-    language?: string;
   },
   callbacks: {
     onEvent(event: GeminiShapedEvent): void;
@@ -40,7 +39,6 @@ export function createGeminiLiveSession(deps: {
   let generation = 0;
   const queued: Uint8Array[] = [];
   let liveMode: TranscriptMode = "smart";
-  let liveLanguage: string | undefined;
   let holdAfterAudioEnd = false;
   let audioEndedTimer: ReturnType<typeof setTimeout> | undefined;
   const audioEndedAfterMs = deps.audioEndedAfterMs ?? 800;
@@ -78,7 +76,7 @@ export function createGeminiLiveSession(deps: {
 
     void deps
       .connect(
-        { apiKey, mode: liveMode, language: liveLanguage },
+        { apiKey, mode: liveMode },
         {
           onEvent: deliver,
           onError(message) {
@@ -124,7 +122,6 @@ export function createGeminiLiveSession(deps: {
       holdAfterAudioEnd = false;
       clearAudioEndedTimer();
       liveMode = options?.mode === "verbatim" ? "verbatim" : "smart";
-      liveLanguage = options?.language?.trim() || undefined;
 
       const apiKey = deps.getKey()?.trim() ?? "";
       if (!apiKey) {

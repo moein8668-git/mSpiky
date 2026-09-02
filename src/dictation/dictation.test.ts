@@ -430,7 +430,7 @@ test("Session reconnect shows a short Overlay note", () => {
   expect(dictation.snapshot().error).toBeNull();
 });
 
-test("start passes stored mode and language into the Session", () => {
+test("start passes stored mode into the Session", () => {
   const options: SessionStartOptions[] = [];
   const dictation = createDictation({
     session: {
@@ -447,9 +447,9 @@ test("start passes stored mode and language into the Session", () => {
         return { kind: "pasted" as const };
       },
     },
-    startOptions: () => ({ mode: "verbatim", language: "fa-IR" }),
+    startOptions: () => ({ mode: "verbatim" }),
   });
 
   dictation.start();
-  expect(options).toEqual([{ mode: "verbatim", language: "fa-IR" }]);
+  expect(options).toEqual([{ mode: "verbatim" }]);
 });

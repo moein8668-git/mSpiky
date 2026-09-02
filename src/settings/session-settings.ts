@@ -3,13 +3,11 @@ import type { TranscriptMode } from "../dictation/dictation";
 export type SessionSettings = {
   micId: string;
   mode: TranscriptMode;
-  language: string;
 };
 
 export const defaultSessionSettings = (): SessionSettings => ({
   micId: "",
   mode: "smart",
-  language: "",
 });
 
 export function createSessionSettings(deps: {
@@ -26,7 +24,6 @@ export function createSessionSettings(deps: {
     save(partial: Partial<SessionSettings>) {
       current = {
         micId: partial.micId ?? current.micId,
-        language: partial.language ?? current.language,
         mode:
           partial.mode === "verbatim"
             ? "verbatim"

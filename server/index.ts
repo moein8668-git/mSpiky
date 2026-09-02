@@ -10,6 +10,7 @@ import {
   type Session,
   type Transcription,
 } from "@google/genai";
+import { sessionTranscriptionConfig } from "../src/session/session-transcription-config";
 
 const PORT = Number(process.env.PORT || 8787);
 const DEFAULT_MODEL =
@@ -19,7 +20,6 @@ type ClientMessage =
   | {
       type: "start";
       mode?: "smart" | "verbatim";
-      language?: string;
       apiKey?: string;
     }
   | { type: "audio_end" }
@@ -63,14 +63,12 @@ function publishTranscripts(socket: WebSocket, message: LiveServerMessage) {
 async function connectSession(options: {
   apiKey: string;
   mode: "smart" | "verbatim";
-  language?: string;
   onMessage: (message: LiveServerMessage) => void;
   onError: (error: Error) => void;
   onClose: (reason: string) => void;
 }): Promise<Session> {
   const ai = new GoogleGenAI({ apiKey: options.apiKey });
-  const transcription: TranscriptionConfig = { mode: options.mode };
-  if (options.language) transcription.languageCodes = [options.language];
+  const transcription: TranscriptionConfig = sessionTranscriptionConfig(options.mode);
 
   const tryConnect = (responseModalities: Modality[]) =>
     ai.live.connect({
@@ -169,7 +167,6 @@ wss.on("connection", (socket) => {
         session = await connectSession({
           apiKey,
           mode: msg.mode === "verbatim" ? "verbatim" : "smart",
-          language: msg.language || undefined,
           onMessage: (message) => publishTranscripts(socket, message),
           onError: (error) => send(socket, { type: "error", message: error.message }),
           onClose: (reason) => {

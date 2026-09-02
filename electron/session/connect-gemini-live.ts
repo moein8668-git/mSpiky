@@ -8,6 +8,7 @@ import {
 } from "@google/genai";
 import type { LiveConnect } from "../../src/session/gemini-live-session";
 import type { GeminiShapedEvent } from "../../src/dictation/map-gemini-event";
+import { sessionTranscriptionConfig } from "../../src/session/session-transcription-config";
 
 const DEFAULT_MODEL =
   process.env.GEMINI_TRANSCRIBE_MODEL || "gemini-3.5-transcribe-live";
@@ -45,8 +46,7 @@ function eventsFromMessage(message: LiveServerMessage): GeminiShapedEvent[] {
 
 export const connectGeminiLive: LiveConnect = async (options, callbacks) => {
   const ai = new GoogleGenAI({ apiKey: options.apiKey });
-  const transcription: TranscriptionConfig = { mode: options.mode };
-  if (options.language) transcription.languageCodes = [options.language];
+  const transcription: TranscriptionConfig = sessionTranscriptionConfig(options.mode);
 
   const tryConnect = (responseModalities: Modality[]) =>
     ai.live.connect({

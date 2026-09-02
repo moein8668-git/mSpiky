@@ -16,7 +16,6 @@ export function createElectronSessionSettings() {
         return {
           micId: typeof parsed.micId === "string" ? parsed.micId : "",
           mode: parsed.mode === "verbatim" ? "verbatim" : "smart",
-          language: typeof parsed.language === "string" ? parsed.language : "",
         };
       } catch {
         return null;

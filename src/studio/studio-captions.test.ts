@@ -105,31 +105,25 @@ test("Smart is the default and settings apply at the next start", () => {
   const { captions, sessionCalls } = createHarness();
 
   captions.start();
-  expect(sessionCalls.options[0]).toEqual({ mode: "smart", language: "" });
+  expect(sessionCalls.options[0]).toEqual({ mode: "smart" });
 
   captions.stop();
-  captions.start({ mode: "verbatim", language: "fa-IR" });
-  expect(sessionCalls.options[1]).toEqual({
-    mode: "verbatim",
-    language: "fa-IR",
-  });
+  captions.start({ mode: "verbatim" });
+  expect(sessionCalls.options[1]).toEqual({ mode: "verbatim" });
 });
 
-test("changing language while listening waits until the next start", () => {
+test("changing mode while listening waits until the next start", () => {
   const { captions, sessionCalls } = createHarness();
 
-  captions.start({ mode: "smart", language: "en-US" });
-  captions.start({ mode: "verbatim", language: "fa-IR" });
+  captions.start({ mode: "smart" });
+  captions.start({ mode: "verbatim" });
 
   expect(sessionCalls.start).toBe(1);
-  expect(sessionCalls.options).toEqual([{ mode: "smart", language: "en-US" }]);
+  expect(sessionCalls.options).toEqual([{ mode: "smart" }]);
 
   captions.stop();
-  captions.start({ mode: "verbatim", language: "fa-IR" });
-  expect(sessionCalls.options[1]).toEqual({
-    mode: "verbatim",
-    language: "fa-IR",
-  });
+  captions.start({ mode: "verbatim" });
+  expect(sessionCalls.options[1]).toEqual({ mode: "verbatim" });
 });
 
 test("Stop ends the Session without Flush", () => {

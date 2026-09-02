@@ -92,7 +92,7 @@ void app.whenReady().then(() => {
     caretInject: caretInjectFromPasteFirst(pasteFirst),
     startOptions() {
       const settings = sessionSettings.get();
-      return { mode: settings.mode, language: settings.language };
+      return { mode: settings.mode };
     },
     onSnapshotChange: () => {
       shell?.refreshOverlay();
@@ -189,15 +189,8 @@ void app.whenReady().then(() => {
       options.mode === "verbatim"
         ? "verbatim"
         : "smart";
-    const language =
-      options &&
-      typeof options === "object" &&
-      "language" in options &&
-      typeof options.language === "string"
-        ? options.language
-        : "";
-    captions.start({ mode, language });
-    sessionSettings.save({ mode, language });
+    captions.start({ mode });
+    sessionSettings.save({ mode });
   });
 
   ipcMain.handle("mspiky:studio-stop", () => {
@@ -215,7 +208,6 @@ void app.whenReady().then(() => {
     const record = value as Record<string, unknown>;
     sessionSettings.save({
       micId: typeof record.micId === "string" ? record.micId : undefined,
-      language: typeof record.language === "string" ? record.language : undefined,
       mode: record.mode === "verbatim" || record.mode === "smart" ? record.mode : undefined,
     });
   });

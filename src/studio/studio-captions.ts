@@ -16,7 +16,6 @@ export type StudioCaptionSnapshot = {
   commits: string[];
   error: string | null;
   mode: TranscriptMode;
-  language: string;
 };
 
 export function createStudioCaptions(adapters: {
@@ -29,11 +28,10 @@ export function createStudioCaptions(adapters: {
     commits: [],
     error: null,
     mode: "smart",
-    language: "",
   });
 
   let snapshot = idleSnapshot();
-  let liveOptions: SessionStartOptions = { mode: "smart", language: "" };
+  let liveOptions: SessionStartOptions = { mode: "smart" };
 
   function publish() {
     adapters.onSnapshotChange?.(snapshot);
@@ -87,7 +85,6 @@ export function createStudioCaptions(adapters: {
       }
       liveOptions = {
         mode: options?.mode === "verbatim" ? "verbatim" : "smart",
-        language: options?.language ?? "",
       };
       snapshot = {
         status: "connecting",
@@ -95,7 +92,6 @@ export function createStudioCaptions(adapters: {
         commits: [],
         error: null,
         mode: liveOptions.mode ?? "smart",
-        language: liveOptions.language ?? "",
       };
       publish();
       adapters.session.start(listener, liveOptions);
@@ -110,7 +106,6 @@ export function createStudioCaptions(adapters: {
         commits: snapshot.commits,
         error: null,
         mode: snapshot.mode,
-        language: snapshot.language,
       };
       publish();
     },

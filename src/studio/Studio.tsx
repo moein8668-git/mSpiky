@@ -3,19 +3,17 @@ import type { TranscriptMode } from "../dictation/dictation";
 import { KEY_MISSING_MESSAGE } from "../secrets/messages";
 import { NO_MIC_MESSAGE } from "../session/messages";
 import { studioChrome } from "../shell/shell";
-import { STUDIO_LANGUAGES } from "./languages";
 import { listMics, startStudioMic, type MicDevice, type StudioMicHandle } from "./mic-capture";
 import type { StudioCaptionSnapshot } from "./studio-captions";
 import "./mspiky-studio-api";
 
 const idleCaptions: StudioCaptionSnapshot = {
-    status: "idle",
-    draft: "",
-    commits: [],
-    error: null,
-    mode: "smart",
-    language: "",
-  };
+  status: "idle",
+  draft: "",
+  commits: [],
+  error: null,
+  mode: "smart",
+};
 
 export function Studio() {
   const [hasKey, setHasKey] = useState<boolean | null>(null);
@@ -24,7 +22,6 @@ export function Studio() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [mode, setMode] = useState<TranscriptMode>("smart");
-  const [language, setLanguage] = useState("");
   const [micId, setMicId] = useState("");
   const [mics, setMics] = useState<MicDevice[]>([]);
   const [captions, setCaptions] = useState<StudioCaptionSnapshot>(idleCaptions);
@@ -37,7 +34,6 @@ export function Studio() {
     void api.hasKey().then(setHasKey);
     void api.getSettings().then((settings) => {
       setMode(settings.mode);
-      setLanguage(settings.language);
       setMicId(settings.micId);
       settingsReady.current = true;
     });
@@ -51,8 +47,8 @@ export function Studio() {
 
   useEffect(() => {
     if (!settingsReady.current) return;
-    void window.mspikyStudio?.saveSettings({ mode, language, micId });
-  }, [mode, language, micId]);
+    void window.mspikyStudio?.saveSettings({ mode, micId });
+  }, [mode, micId]);
 
   useEffect(() => {
     void refreshMics();
@@ -107,7 +103,7 @@ export function Studio() {
       return;
     }
     try {
-      await api.startCaptions({ mode, language: language || undefined });
+      await api.startCaptions({ mode });
       const capture = await startStudioMic(micId || undefined, (chunk) => {
         api.sendPcm(chunk);
       });
@@ -214,22 +210,6 @@ export function Studio() {
           >
             <option value="smart">{studioChrome.modeSmart}</option>
             <option value="verbatim">{studioChrome.modeVerbatim}</option>
-          </select>
-        </label>
-
-        <label className="block space-y-1 text-sm text-mute">
-          <span>{studioChrome.languageLabel}</span>
-          <select
-            className="w-full rounded border border-line bg-ink px-3 py-2 text-cream"
-            value={language}
-            disabled={live}
-            onChange={(event) => setLanguage(event.target.value)}
-          >
-            {STUDIO_LANGUAGES.map((item) => (
-              <option key={item.value || "detect"} value={item.value}>
-                {item.label}
-              </option>
-            ))}
           </select>
         </label>
 

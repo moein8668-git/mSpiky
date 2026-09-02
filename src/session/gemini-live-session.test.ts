@@ -12,7 +12,7 @@ function createHarness(options?: { key?: string | null }) {
   const reconnects: number[] = [];
   const audioEnded: number[] = [];
   let ready = 0;
-  let connectCalls: Array<{ mode: string; language?: string; apiKey: string }> =
+  let connectCalls: Array<{ mode: string; apiKey: string }> =
     [];
   let emitEvent: ((event: GeminiShapedEvent) => void) | undefined;
   let failConnect: ((message: string) => void) | undefined;
@@ -26,7 +26,6 @@ function createHarness(options?: { key?: string | null }) {
     async connect(opts, callbacks) {
       connectCalls.push({
         mode: opts.mode,
-        language: opts.language,
         apiKey: opts.apiKey,
       });
       emitEvent = callbacks.onEvent;
@@ -63,7 +62,7 @@ function createHarness(options?: { key?: string | null }) {
         reconnects.push(1);
       },
     },
-    { mode: "smart", language: "fa-IR" },
+    { mode: "smart" },
   );
 
   return {
@@ -122,11 +121,11 @@ test("invalid Key from Gemini is a visible error", async () => {
   expect(errors).toEqual([INVALID_KEY_MESSAGE]);
 });
 
-test("mode and language are sent at connect, not later", async () => {
+test("mode is sent at connect, not later", async () => {
   const { settleConnect, connectCalls } = createHarness();
   await settleConnect();
   expect(connectCalls()).toEqual([
-    { mode: "smart", language: "fa-IR", apiKey: "test-key" },
+    { mode: "smart", apiKey: "test-key" },
   ]);
 });
 
