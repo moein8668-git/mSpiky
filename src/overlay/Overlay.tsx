@@ -1,34 +1,36 @@
+import { useLayoutEffect, useRef } from "react";
+import type { OverlaySnapshot } from "../dictation/dictation";
 import { overlayChrome } from "../shell/shell";
+import {
+  overlayText,
+  overlayTextTail,
+  scrollOverlayTextToLatest,
+} from "./overlay-text";
 
-function statusLabel(status: "idle" | "listening" | "paused") {
+function statusLabel(status: OverlaySnapshot["status"]) {
   return overlayChrome.statusLabel[status];
 }
 
-export function Overlay({
-  snapshot,
-  onPause,
-  onResume,
-}: {
-  snapshot: {
-    status: "idle" | "listening" | "paused";
-    draft: string;
-    commits: string[];
-    error: string | null;
-    meter: number;
-  };
-  onPause: () => void;
-  onResume: () => void;
-}) {
-  const paused = snapshot.status === "paused";
+export function Overlay({ snapshot }: { snapshot: OverlaySnapshot }) {
+  const spoken = overlayTextTail(
+    overlayText(snapshot.commits, snapshot.draft),
+  );
+  const spokenRef = useRef<HTMLSpanElement>(null);
+
+  useLayoutEffect(() => {
+    if (spokenRef.current) scrollOverlayTextToLatest(spokenRef.current);
+  }, [spoken]);
 
   return (
-    <div className="flex h-full items-center gap-3 px-4 py-2">
-      <span className="text-xs font-medium uppercase tracking-wide text-mute">
+    <div className="flex h-full min-w-0 items-center gap-3 overflow-hidden px-4 py-2">
+      <span className="shrink-0 text-xs font-medium uppercase tracking-wide text-mute">
         mSpiky
       </span>
-      <span className="text-sm text-cream">{statusLabel(snapshot.status)}</span>
+      <span className="shrink-0 text-sm text-cream">
+        {statusLabel(snapshot.status)}
+      </span>
       <div
-        className="h-2 w-12 overflow-hidden rounded-full bg-line"
+        className="h-2 w-12 shrink-0 overflow-hidden rounded-full bg-line"
         aria-label="Mic level"
       >
         <div
@@ -36,34 +38,24 @@ export function Overlay({
           style={{ width: `${Math.round(snapshot.meter * 100)}%` }}
         />
       </div>
-      {snapshot.draft ? (
-        <span className="text-sm italic text-mute">{snapshot.draft}</span>
-      ) : null}
-      {snapshot.commits.length > 0 ? (
-        <span className="text-sm text-cream">{snapshot.commits.join(" ")}</span>
-      ) : null}
+      {spoken ? (
+        <span
+          ref={spokenRef}
+          className="overlay-text min-w-0 flex-1 text-sm text-cream"
+          dir="auto"
+        >
+          <span className="overlay-text-inner">{spoken}</span>
+        </span>
+      ) : (
+        <span className="min-w-0 flex-1" />
+      )}
       {snapshot.error ? (
-        <span className="text-sm text-live" role="alert">
+        <span
+          className="max-w-[12rem] shrink-0 truncate text-sm text-live"
+          role="alert"
+        >
           {snapshot.error}
         </span>
-      ) : null}
-      {snapshot.status === "listening" ? (
-        <button
-          type="button"
-          className="overlay-control rounded px-2 py-0.5 text-xs text-cream"
-          onClick={onPause}
-        >
-          Pause
-        </button>
-      ) : null}
-      {paused ? (
-        <button
-          type="button"
-          className="overlay-control rounded px-2 py-0.5 text-xs text-cream"
-          onClick={onResume}
-        >
-          Resume
-        </button>
       ) : null}
     </div>
   );

@@ -222,6 +222,7 @@ export function createDictation(adapters: {
     },
     pause() {
       if (snapshot.status !== "listening") return Promise.resolve();
+      if (pendingFlush !== null) return waitForPendingFlush();
       pendingFlush = "pause";
       adapters.session.sendEndOfAudio();
       return waitForPendingFlush();

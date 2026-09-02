@@ -62,11 +62,5 @@ export function OverlayApp() {
     };
   }, [snapshot.status]);
 
-  return (
-    <Overlay
-      snapshot={snapshot}
-      onPause={() => window.mspiky?.pause()}
-      onResume={() => window.mspiky?.resume()}
-    />
-  );
+  return <Overlay snapshot={snapshot} />;
 }

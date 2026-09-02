@@ -18,8 +18,9 @@ export function overlayWindowOptions(
   const mac = process.platform === "darwin";
 
   return {
-    width: 520,
-    height: 88,
+    backgroundColor: "#1c1916",
+    width: 640,
+    height: 72,
     frame: false,
     transparent: true,
     skipTaskbar: true,
@@ -32,7 +33,6 @@ export function overlayWindowOptions(
     hasShadow: false,
     show: false,
     hiddenInMissionControl: true,
-    acceptFirstMouse: true,
     type: linux ? linuxOverlayType() : mac ? "panel" : undefined,
     webPreferences: {
       preload: preloadPath,

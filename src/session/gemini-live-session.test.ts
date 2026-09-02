@@ -10,6 +10,7 @@ function createHarness(options?: { key?: string | null }) {
   const errors: string[] = [];
   const pcm: Uint8Array[] = [];
   const reconnects: number[] = [];
+  const audioEnded: number[] = [];
   let ready = 0;
   let connectCalls: Array<{ mode: string; language?: string; apiKey: string }> =
     [];
@@ -21,6 +22,7 @@ function createHarness(options?: { key?: string | null }) {
     getKey() {
       return options?.key === undefined ? "test-key" : options.key;
     },
+    audioEndedAfterMs: 0,
     async connect(opts, callbacks) {
       connectCalls.push({
         mode: opts.mode,
@@ -48,7 +50,9 @@ function createHarness(options?: { key?: string | null }) {
       onCommit(text) {
         commits.push(text);
       },
-      onAudioEnded() {},
+      onAudioEnded() {
+        audioEnded.push(1);
+      },
       onReady() {
         ready += 1;
       },
@@ -84,6 +88,7 @@ function createHarness(options?: { key?: string | null }) {
       closeConnect?.();
     },
     reconnects: () => reconnects,
+    audioEnded: () => audioEnded,
   };
 }
 
@@ -170,4 +175,12 @@ test("end-of-audio close waits for resume instead of reconnecting", async () => 
   await harness.settleConnect();
   expect(harness.connectCalls()).toHaveLength(2);
   expect(harness.reconnects()).toEqual([]);
+});
+
+test("end-of-audio tells Dictation audio has settled so Flush can run", async () => {
+  const harness = createHarness();
+  await harness.settleConnect();
+  harness.session.sendEndOfAudio();
+  await Promise.resolve();
+  expect(harness.audioEnded()).toEqual([1]);
 });

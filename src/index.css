@@ -30,23 +30,27 @@ html.overlay-surface body,
 html.overlay-surface #root {
   min-height: 0;
   height: 100%;
+  overflow: hidden;
   background: transparent;
 }
 
 html.overlay-surface body {
-  background: rgb(28 25 22 / 0.92);
+  background: #1c1916;
   border-radius: 12px;
 }
 
-.overlay-control {
-  -webkit-app-region: no-drag;
-  border: 1px solid var(--color-line);
-  background: transparent;
-  cursor: pointer;
+.overlay-text {
+  display: flex;
+  justify-content: flex-end;
+  overflow: hidden;
+  white-space: nowrap;
+  min-width: 0;
 }
 
-.overlay-control:hover {
-  background: rgb(255 255 255 / 0.06);
+.overlay-text-inner {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  unicode-bidi: plaintext;
 }
 
 @media (prefers-reduced-motion: reduce) {

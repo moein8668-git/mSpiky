@@ -12,12 +12,6 @@ contextBridge.exposeInMainWorld("mspiky", {
       ipcRenderer.removeListener("mspiky:overlay-snapshot", handler);
     };
   },
-  pause() {
-    ipcRenderer.send("mspiky:overlay-pause");
-  },
-  resume() {
-    ipcRenderer.send("mspiky:overlay-resume");
-  },
   sendPcm(pcm: Uint8Array) {
     ipcRenderer.send("mspiky:overlay-pcm", pcm);
   },

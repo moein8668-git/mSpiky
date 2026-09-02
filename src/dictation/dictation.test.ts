@@ -124,6 +124,20 @@ test("Pause Flushes accumulated Commits and keeps Dictation alive", async () => 
   expect(sessionCalls.endOfAudio).toBe(1);
 });
 
+test("a second Pause while Flush is pending does not end audio again", async () => {
+  const { dictation, emitDraft, emitCommit, sessionCalls } = createHarness();
+
+  dictation.start();
+  emitCommit("hello");
+  emitDraft("wor");
+  const first = dictation.pause();
+  const second = dictation.pause();
+  emitCommit("world");
+  await Promise.all([first, second]);
+
+  expect(sessionCalls.endOfAudio).toBe(1);
+});
+
 test("Pause does not Flush while a Draft is still moving", async () => {
   const { dictation, emitDraft, emitCommit, flushes } = createHarness();
 

@@ -68,6 +68,7 @@ void app.whenReady().then(() => {
 
   overlay.setAlwaysOnTop(true, "screen-saver");
   overlay.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  overlay.setIgnoreMouseEvents(true);
 
   const liveDeps = {
     getKey() {
@@ -169,14 +170,6 @@ void app.whenReady().then(() => {
         globalShortcut.register(chord, handler);
       },
     },
-  });
-
-  ipcMain.on("mspiky:overlay-pause", () => {
-    shell.pauseDictation();
-  });
-
-  ipcMain.on("mspiky:overlay-resume", () => {
-    shell.resumeDictation();
   });
 
   ipcMain.handle("mspiky:key-has", () => keyStore.hasKey());

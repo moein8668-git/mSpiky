@@ -287,10 +287,6 @@ export function Studio() {
           )}
         </div>
       </section>
-
-      {studioChrome.overlayPauseNote ? (
-        <p className="text-sm text-mute">{studioChrome.overlayPauseNote}</p>
-      ) : null}
     </main>
   );
 }

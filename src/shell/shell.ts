@@ -28,10 +28,6 @@ export const studioChrome = {
   languageLabel: "Spoken language",
   micStart: "Start mic",
   micStop: "Stop",
-  overlayPauseNote:
-    typeof process !== "undefined" && process.platform === "linux"
-      ? "On some Linux desktops, use a Pause hotkey instead of clicking Pause on the Overlay."
-      : null,
 };
 
 export const overlayChrome = {
