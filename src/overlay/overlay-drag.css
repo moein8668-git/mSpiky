@@ -1,5 +1,5 @@
 .overlay-drag-handle {
-  -webkit-app-region: no-drag;
+  -webkit-app-region: drag;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -15,6 +15,7 @@
   cursor: grab;
   user-select: none;
   touch-action: none;
+  pointer-events: auto;
 }
 
 .overlay-drag-handle:hover {

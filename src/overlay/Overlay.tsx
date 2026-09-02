@@ -13,41 +13,7 @@ function statusLabel(status: OverlaySnapshot["status"]) {
   return overlayChrome.statusLabel[status];
 }
 
-type OverlayProps = {
-  snapshot: OverlaySnapshot;
-  onDragChange?: (dragging: boolean) => void;
-};
-
-function beginOverlayDrag(
-  screenX: number,
-  screenY: number,
-  onDragChange?: (dragging: boolean) => void,
-) {
-  const api = window.mspiky;
-  if (!api) return;
-  onDragChange?.(true);
-  api.setClickThrough(false);
-  api.startOverlayDrag(screenX, screenY);
-
-  function onMove(event: PointerEvent) {
-    api?.moveOverlayDrag(event.screenX, event.screenY);
-  }
-
-  function onUp() {
-    api?.endOverlayDrag();
-    api?.setClickThrough(true);
-    onDragChange?.(false);
-    window.removeEventListener("pointermove", onMove);
-    window.removeEventListener("pointerup", onUp);
-    window.removeEventListener("pointercancel", onUp);
-  }
-
-  window.addEventListener("pointermove", onMove);
-  window.addEventListener("pointerup", onUp);
-  window.addEventListener("pointercancel", onUp);
-}
-
-export function Overlay({ snapshot, onDragChange }: OverlayProps) {
+export function Overlay({ snapshot }: { snapshot: OverlaySnapshot }) {
   const spoken = overlayTextTail(
     overlayText(snapshot.commits, snapshot.draft),
   );
@@ -59,19 +25,14 @@ export function Overlay({ snapshot, onDragChange }: OverlayProps) {
 
   return (
     <div className="flex h-full min-w-0 items-center gap-3 overflow-hidden px-3 py-2">
-      <button
-        type="button"
+      <div
         className="overlay-drag-handle"
+        role="button"
         aria-label="Move overlay"
         title="Drag to move"
-        onPointerDown={(event) => {
-          event.preventDefault();
-          event.currentTarget.setPointerCapture(event.pointerId);
-          beginOverlayDrag(event.screenX, event.screenY, onDragChange);
-        }}
       >
         <DotsSixVertical size={18} weight="bold" aria-hidden />
-      </button>
+      </div>
       <span className="shrink-0 text-xs font-medium uppercase tracking-wide text-mute">
         mSpiky
       </span>
