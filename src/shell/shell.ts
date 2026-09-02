@@ -4,10 +4,9 @@ import { SESSION_RECONNECT_NOTE } from "../session/messages";
 
 export const studioChrome = {
   heading: "Studio",
-  body: "Settings, files, and history will live here.",
+  body: "Settings, captions, and text history.",
   keyHeading: "Key",
-  keyBody:
-    "Paste your Key from Google AI Studio. mSpiky stores it in the OS secret store on this machine.",
+  keyBody: "Paste your Key from Google AI Studio to store it.",
   keyPlaceholder: "Your Key",
   keySave: "Save Key",
   keySaved: "Key saved",
@@ -27,6 +26,11 @@ export const studioChrome = {
   modeVerbatim: "Verbatim",
   micStart: "Start mic",
   micStop: "Stop",
+  historyHeading: "History",
+  historyBody: "Past Studio captions. Text only; audio is never stored.",
+  historyEmpty: "No history yet.",
+  historyClear: "Clear history",
+  historyCopy: "Copy",
 };
 
 export const overlayChrome = {

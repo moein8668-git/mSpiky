@@ -269,13 +269,11 @@ test("Start Dictation with Studio open and no Key shows a Studio notice", async 
 
 test("Studio and Overlay chrome is English", () => {
   expect(studioChrome.heading).toBe("Studio");
-  expect(studioChrome.keyBody).toContain("your Key");
+  expect(studioChrome.keyBody).toContain("Google AI Studio");
   expect(studioChrome.captionsBody).toContain("Studio");
   expect(studioChrome.modeSmart).toBe("Smart");
   expect(studioChrome.statusListening).toBe("Listening");
-  expect(studioChrome.body).toBe(
-    "Settings, files, and history will live here.",
-  );
+  expect(studioChrome.body).toBe("Settings, captions, and text history.");
   expect(overlayChrome.statusLabel.listening).toBe("Listening");
   expect(overlayChrome.reconnectNote).toContain("reconnected");
 });

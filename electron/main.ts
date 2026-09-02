@@ -21,6 +21,8 @@ import { createStudioCaptions } from "../src/studio/studio-captions";
 import { createElectronCaretInject } from "./caret-inject";
 import { createElectronKeyStore } from "./secrets/key-store";
 import { createElectronSessionSettings } from "./settings/session-settings";
+import { createElectronStudioHistory } from "./history/studio-history";
+import { studioHistoryText } from "../src/history/studio-history";
 import { connectGeminiLive } from "./session/connect-gemini-live";
 import { overlayWindowOptions, studioWindowOptions } from "./window-options";
 
@@ -43,6 +45,7 @@ void app.whenReady().then(() => {
   const studioPreloadPath = path.join(__dirname, "preload-studio.cjs");
   const keyStore = createElectronKeyStore();
   const sessionSettings = createElectronSessionSettings();
+  const studioHistory = createElectronStudioHistory();
   const studio = new BrowserWindow(studioWindowOptions(studioPreloadPath));
   const overlay = new BrowserWindow(overlayWindowOptions(preloadPath));
   void studio.loadURL(rendererUrl("studio"));
@@ -193,8 +196,17 @@ void app.whenReady().then(() => {
     sessionSettings.save({ mode });
   });
 
-  ipcMain.handle("mspiky:studio-stop", () => {
+  function stopStudioCaptionsWithHistory() {
+    const snapshot = captions.snapshot();
+    if (snapshot.status === "idle") return;
+    const text = studioHistoryText(snapshot.commits);
+    const mode = snapshot.mode;
     captions.stop();
+    if (text) studioHistory.append(text, mode);
+  }
+
+  ipcMain.handle("mspiky:studio-stop", () => {
+    stopStudioCaptionsWithHistory();
   });
 
   ipcMain.handle("mspiky:studio-fail", (_event, message: unknown) => {
@@ -210,6 +222,12 @@ void app.whenReady().then(() => {
       micId: typeof record.micId === "string" ? record.micId : undefined,
       mode: record.mode === "verbatim" || record.mode === "smart" ? record.mode : undefined,
     });
+  });
+
+  ipcMain.handle("mspiky:history-list", () => studioHistory.list());
+
+  ipcMain.handle("mspiky:history-clear", () => {
+    studioHistory.clear();
   });
 
   function asPcm(data: unknown): Uint8Array | null {
@@ -236,7 +254,7 @@ void app.whenReady().then(() => {
   studio.on("close", (event) => {
     if (quitting) return;
     event.preventDefault();
-    captions.stop();
+    stopStudioCaptionsWithHistory();
     shell.closeStudio();
   });
 

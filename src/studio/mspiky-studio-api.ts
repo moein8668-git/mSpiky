@@ -1,4 +1,5 @@
 import type { SessionStartOptions } from "../dictation/dictation";
+import type { StudioHistoryEntry } from "../history/studio-history";
 import type { SessionSettings } from "../settings/session-settings";
 import type { StudioCaptionSnapshot } from "./studio-captions";
 
@@ -13,6 +14,8 @@ export type MspikyStudioApi = {
   onCaptions(listener: (snapshot: StudioCaptionSnapshot) => void): () => void;
   getSettings(): Promise<SessionSettings>;
   saveSettings(settings: Partial<SessionSettings>): Promise<void>;
+  listHistory(): Promise<StudioHistoryEntry[]>;
+  clearHistory(): Promise<void>;
 };
 
 declare global {

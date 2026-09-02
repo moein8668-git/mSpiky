@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { TranscriptMode } from "../dictation/dictation";
+import type { StudioHistoryEntry } from "../history/studio-history";
 import { KEY_MISSING_MESSAGE } from "../secrets/messages";
 import { NO_MIC_MESSAGE } from "../session/messages";
 import { studioChrome } from "../shell/shell";
@@ -15,6 +16,12 @@ const idleCaptions: StudioCaptionSnapshot = {
   mode: "smart",
 };
 
+function formatHistoryWhen(createdAt: string) {
+  const date = new Date(createdAt);
+  if (Number.isNaN(date.getTime())) return createdAt;
+  return date.toLocaleString();
+}
+
 export function Studio() {
   const [hasKey, setHasKey] = useState<boolean | null>(null);
   const [draftKey, setDraftKey] = useState("");
@@ -25,8 +32,14 @@ export function Studio() {
   const [micId, setMicId] = useState("");
   const [mics, setMics] = useState<MicDevice[]>([]);
   const [captions, setCaptions] = useState<StudioCaptionSnapshot>(idleCaptions);
+  const [history, setHistory] = useState<StudioHistoryEntry[]>([]);
   const captureRef = useRef<StudioMicHandle | null>(null);
   const settingsReady = useRef(false);
+
+  async function loadHistory() {
+    const entries = await window.mspikyStudio?.listHistory();
+    setHistory(entries ?? []);
+  }
 
   useEffect(() => {
     const api = window.mspikyStudio;
@@ -37,6 +50,7 @@ export function Studio() {
       setMicId(settings.micId);
       settingsReady.current = true;
     });
+    void loadHistory();
     const stopMissing = api.onKeyMissing((message) => setNotice(message));
     const stopCaptions = api.onCaptions(setCaptions);
     return () => {
@@ -117,6 +131,20 @@ export function Studio() {
   async function stopMic() {
     await stopCapture();
     await window.mspikyStudio?.stopCaptions();
+    await loadHistory();
+  }
+
+  async function clearHistory() {
+    await window.mspikyStudio?.clearHistory();
+    setHistory([]);
+  }
+
+  async function copyHistory(text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      // Clipboard may be unavailable in some environments.
+    }
   }
 
   const live = captions.status === "connecting" || captions.status === "listening";
@@ -266,6 +294,52 @@ export function Studio() {
             <span className="text-mute">{studioChrome.captionsPlaceholder}</span>
           )}
         </div>
+      </section>
+
+      <section className="space-y-3 rounded-lg border border-line p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="space-y-1">
+            <h2 className="text-sm font-medium text-cream">
+              {studioChrome.historyHeading}
+            </h2>
+            <p className="text-sm text-mute">{studioChrome.historyBody}</p>
+          </div>
+          {history.length > 0 ? (
+            <button
+              type="button"
+              className="shrink-0 rounded border border-line px-2 py-1 text-xs text-cream"
+              onClick={() => void clearHistory()}
+            >
+              {studioChrome.historyClear}
+            </button>
+          ) : null}
+        </div>
+
+        {history.length === 0 ? (
+          <p className="text-sm text-mute">{studioChrome.historyEmpty}</p>
+        ) : (
+          <ul className="space-y-3">
+            {history.map((entry) => (
+              <li
+                key={entry.id}
+                className="rounded border border-line bg-ink px-3 py-2 text-sm text-cream"
+              >
+                <div className="mb-2 flex items-center justify-between gap-3 text-xs text-mute">
+                  <span>{formatHistoryWhen(entry.createdAt)}</span>
+                  <span className="uppercase">{entry.mode}</span>
+                </div>
+                <p className="whitespace-pre-wrap">{entry.text}</p>
+                <button
+                  type="button"
+                  className="mt-2 rounded border border-line px-2 py-1 text-xs text-cream"
+                  onClick={() => void copyHistory(entry.text)}
+                >
+                  {studioChrome.historyCopy}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
     </main>
   );
