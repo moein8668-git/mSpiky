@@ -1,11 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import type { TranscriptMode } from "../dictation/dictation";
+import type { AppSettings } from "../settings/app-settings";
+import { validateHotkey } from "../settings/hotkey";
 import type { StudioHistoryEntry } from "../history/studio-history";
 import { KEY_MISSING_MESSAGE } from "../secrets/messages";
 import { NO_MIC_MESSAGE } from "../session/messages";
 import { studioChrome } from "../shell/shell";
+import { startStudioFile, type StudioFileHandle } from "./file-capture";
 import { listMics, startStudioMic, type MicDevice, type StudioMicHandle } from "./mic-capture";
 import type { StudioCaptionSnapshot } from "./studio-captions";
+import { studioCaptionText } from "./studio-caption-text";
 import "./mspiky-studio-api";
 
 const idleCaptions: StudioCaptionSnapshot = {
@@ -30,10 +34,26 @@ export function Studio() {
   const [saving, setSaving] = useState(false);
   const [mode, setMode] = useState<TranscriptMode>("smart");
   const [micId, setMicId] = useState("");
+  const [activationMode, setActivationMode] =
+    useState<AppSettings["activationMode"]>("tap");
+  const [dictationHotkey, setDictationHotkey] = useState("Control+Shift+Space");
+  const [pauseHotkey, setPauseHotkey] = useState("");
+  const [launchAtLogin, setLaunchAtLogin] = useState(false);
+  const [chimesEnabled, setChimesEnabled] = useState(false);
+  const [pipeEnabled, setPipeEnabled] = useState(false);
+  const [pipeHost, setPipeHost] = useState("");
+  const [pipePort, setPipePort] = useState(1080);
+  const [pipeUser, setPipeUser] = useState("");
+  const [pipePassword, setPipePassword] = useState("");
+  const [pipeRemoteDns, setPipeRemoteDns] = useState(true);
+  const [pipeNotice, setPipeNotice] = useState<string | null>(null);
+  const [pushAvailable, setPushAvailable] = useState(true);
   const [mics, setMics] = useState<MicDevice[]>([]);
   const [captions, setCaptions] = useState<StudioCaptionSnapshot>(idleCaptions);
   const [history, setHistory] = useState<StudioHistoryEntry[]>([]);
+  const [source, setSource] = useState<"mic" | "file" | null>(null);
   const captureRef = useRef<StudioMicHandle | null>(null);
+  const fileRef = useRef<StudioFileHandle | null>(null);
   const settingsReady = useRef(false);
 
   async function loadHistory() {
@@ -45,9 +65,20 @@ export function Studio() {
     const api = window.mspikyStudio;
     if (!api) return;
     void api.hasKey().then(setHasKey);
+    void api.pushToTalkAvailable().then(setPushAvailable);
     void api.getSettings().then((settings) => {
       setMode(settings.mode);
       setMicId(settings.micId);
+      setActivationMode(settings.activationMode);
+      setDictationHotkey(settings.dictationHotkey);
+      setPauseHotkey(settings.pauseHotkey);
+      setLaunchAtLogin(settings.launchAtLogin);
+      setChimesEnabled(settings.chimesEnabled);
+      setPipeEnabled(settings.pipe.enabled);
+      setPipeHost(settings.pipe.host);
+      setPipePort(settings.pipe.port);
+      setPipeUser(settings.pipe.user);
+      setPipeRemoteDns(settings.pipe.remoteDns);
       settingsReady.current = true;
     });
     void loadHistory();
@@ -65,8 +96,43 @@ export function Studio() {
 
   useEffect(() => {
     if (!settingsReady.current) return;
-    void window.mspikyStudio?.saveSettings({ mode, micId });
-  }, [mode, micId]);
+    void window.mspikyStudio?.saveSettings({
+      mode,
+      micId,
+      activationMode,
+      dictationHotkey,
+      pauseHotkey,
+      launchAtLogin,
+      chimesEnabled,
+      pipe: {
+        enabled: pipeEnabled,
+        host: pipeHost,
+        port: pipePort,
+        user: pipeUser,
+        remoteDns: pipeRemoteDns,
+      },
+    });
+  }, [
+    mode,
+    micId,
+    activationMode,
+    dictationHotkey,
+    pauseHotkey,
+    launchAtLogin,
+    chimesEnabled,
+    pipeEnabled,
+    pipeHost,
+    pipePort,
+    pipeUser,
+    pipeRemoteDns,
+  ]);
+
+  useEffect(() => {
+    if (!settingsReady.current || !pipePassword.trim()) return;
+    void window.mspikyStudio?.savePipePassword(pipePassword).then(() => {
+      setPipePassword("");
+    });
+  }, [pipePassword]);
 
   useEffect(() => {
     void refreshMics();
@@ -75,6 +141,7 @@ export function Studio() {
   useEffect(() => {
     if (captions.status === "error" || captions.status === "idle") {
       void stopCapture();
+      setSource(null);
     }
   }, [captions.status]);
 
@@ -91,6 +158,9 @@ export function Studio() {
     const capture = captureRef.current;
     captureRef.current = null;
     if (capture) await capture.stop();
+    const file = fileRef.current;
+    fileRef.current = null;
+    if (file) await file.stop();
   }
 
   async function saveKey() {
@@ -126,10 +196,42 @@ export function Studio() {
         api.sendPcm(chunk);
       });
       captureRef.current = capture;
+      setSource("mic");
       void refreshMics();
     } catch {
       await api.failCaptions(NO_MIC_MESSAGE);
     }
+  }
+
+  async function startFile(file: File) {
+    const api = window.mspikyStudio;
+    if (!api) return;
+    if (!hasKey) {
+      setNotice(KEY_MISSING_MESSAGE);
+      await api.failCaptions(KEY_MISSING_MESSAGE);
+      return;
+    }
+    await stopCapture();
+    try {
+      await api.startCaptions({ mode });
+      const capture = await startStudioFile(
+        file,
+        (chunk) => api.sendPcm(chunk),
+        () => {
+          void stopFile();
+        },
+      );
+      fileRef.current = capture;
+      setSource("file");
+    } catch {
+      await api.failCaptions("Could not play that file.");
+    }
+  }
+
+  async function stopFile() {
+    await stopCapture();
+    await window.mspikyStudio?.stopCaptions();
+    await loadHistory();
   }
 
   async function stopMic() {
@@ -151,7 +253,30 @@ export function Studio() {
     }
   }
 
+  async function copyCaptions() {
+    const text = studioCaptionText(captions);
+    if (!text) return;
+    await copyHistory(text);
+  }
+
+  async function saveCaptions() {
+    const text = studioCaptionText(captions);
+    if (!text) return;
+    await window.mspikyStudio?.saveTranscript(text);
+  }
+
+  async function testPipe() {
+    const result = await window.mspikyStudio?.testPipe();
+    setPipeNotice(
+      result?.ok ? studioChrome.pipeTestOk : result?.message ?? studioChrome.pipeTestFail,
+    );
+  }
+
   const live = captions.status === "connecting" || captions.status === "listening";
+  const dictationHotkeyError = validateHotkey(dictationHotkey);
+  const pauseHotkeyError = pauseHotkey.trim()
+    ? validateHotkey(pauseHotkey)
+    : { ok: true as const };
 
   return (
     <main className="mx-auto flex min-h-dvh max-w-lg flex-col gap-6 px-8 py-10">
@@ -209,6 +334,136 @@ export function Studio() {
       <section className="space-y-3 rounded-lg border border-line p-4">
         <div className="space-y-1">
           <h2 className="text-sm font-medium text-cream">
+            {studioChrome.settingsHeading}
+          </h2>
+          <p className="text-sm text-mute">{studioChrome.settingsBody}</p>
+        </div>
+        <label className="block space-y-1 text-sm text-mute">
+          <span>{studioChrome.activationLabel}</span>
+          <select
+            className="w-full rounded border border-line bg-ink px-3 py-2 text-cream"
+            value={activationMode}
+            onChange={(event) =>
+              setActivationMode(event.target.value as AppSettings["activationMode"])
+            }
+          >
+            <option value="tap">{studioChrome.activationTap}</option>
+            <option value="push" disabled={!pushAvailable}>
+              {studioChrome.activationPush}
+            </option>
+          </select>
+        </label>
+        {!pushAvailable ? (
+          <p className="text-sm text-mute">{studioChrome.pushToTalkUnavailable}</p>
+        ) : null}
+        <label className="block space-y-1 text-sm text-mute">
+          <span>{studioChrome.dictationHotkeyLabel}</span>
+          <input
+            className="w-full rounded border border-line bg-ink px-3 py-2 text-cream"
+            value={dictationHotkey}
+            onChange={(event) => setDictationHotkey(event.target.value)}
+          />
+        </label>
+        {!dictationHotkeyError.ok ? (
+          <p className="text-sm text-live">{dictationHotkeyError.reason}</p>
+        ) : null}
+        <label className="block space-y-1 text-sm text-mute">
+          <span>{studioChrome.pauseHotkeyLabel}</span>
+          <input
+            className="w-full rounded border border-line bg-ink px-3 py-2 text-cream"
+            value={pauseHotkey}
+            onChange={(event) => setPauseHotkey(event.target.value)}
+          />
+        </label>
+        {!pauseHotkeyError.ok ? (
+          <p className="text-sm text-live">{pauseHotkeyError.reason}</p>
+        ) : null}
+        <label className="flex items-center gap-2 text-sm text-cream">
+          <input
+            type="checkbox"
+            checked={launchAtLogin}
+            onChange={(event) => setLaunchAtLogin(event.target.checked)}
+          />
+          {studioChrome.launchAtLoginLabel}
+        </label>
+        <label className="flex items-center gap-2 text-sm text-cream">
+          <input
+            type="checkbox"
+            checked={chimesEnabled}
+            onChange={(event) => setChimesEnabled(event.target.checked)}
+          />
+          {studioChrome.chimesLabel}
+        </label>
+      </section>
+
+      <section className="space-y-3 rounded-lg border border-line p-4">
+        <div className="space-y-1">
+          <h2 className="text-sm font-medium text-cream">{studioChrome.pipeHeading}</h2>
+          <p className="text-sm text-mute">{studioChrome.pipeBody}</p>
+        </div>
+        <label className="flex items-center gap-2 text-sm text-cream">
+          <input
+            type="checkbox"
+            checked={pipeEnabled}
+            onChange={(event) => setPipeEnabled(event.target.checked)}
+          />
+          {studioChrome.pipeEnabled}
+        </label>
+        <label className="block space-y-1 text-sm text-mute">
+          <span>{studioChrome.pipeHost}</span>
+          <input
+            className="w-full rounded border border-line bg-ink px-3 py-2 text-cream"
+            value={pipeHost}
+            onChange={(event) => setPipeHost(event.target.value)}
+          />
+        </label>
+        <label className="block space-y-1 text-sm text-mute">
+          <span>{studioChrome.pipePort}</span>
+          <input
+            type="number"
+            className="w-full rounded border border-line bg-ink px-3 py-2 text-cream"
+            value={pipePort}
+            onChange={(event) => setPipePort(Number(event.target.value))}
+          />
+        </label>
+        <label className="block space-y-1 text-sm text-mute">
+          <span>{studioChrome.pipeUser}</span>
+          <input
+            className="w-full rounded border border-line bg-ink px-3 py-2 text-cream"
+            value={pipeUser}
+            onChange={(event) => setPipeUser(event.target.value)}
+          />
+        </label>
+        <label className="block space-y-1 text-sm text-mute">
+          <span>{studioChrome.pipePassword}</span>
+          <input
+            type="password"
+            className="w-full rounded border border-line bg-ink px-3 py-2 text-cream"
+            value={pipePassword}
+            onChange={(event) => setPipePassword(event.target.value)}
+          />
+        </label>
+        <label className="flex items-center gap-2 text-sm text-cream">
+          <input
+            type="checkbox"
+            checked={pipeRemoteDns}
+            onChange={(event) => setPipeRemoteDns(event.target.checked)}
+          />
+          {studioChrome.pipeRemoteDns}
+        </label>
+        <button
+          type="button"
+          className="rounded border border-line px-3 py-1.5 text-sm text-cream"
+          onClick={() => void testPipe()}
+        >
+          {studioChrome.pipeTest}
+        </button>
+        {pipeNotice ? <p className="text-sm text-mute">{pipeNotice}</p> : null}
+      </section>
+
+      <section className="space-y-3 rounded-lg border border-line p-4">
+        <div className="space-y-1">
+          <h2 className="text-sm font-medium text-cream">
             {studioChrome.captionsHeading}
           </h2>
           <p className="text-sm text-mute">{studioChrome.captionsBody}</p>
@@ -245,8 +500,8 @@ export function Studio() {
           </select>
         </label>
 
-        <div className="flex items-center gap-3">
-          {live ? (
+        <div className="flex flex-wrap items-center gap-3">
+          {live && source === "mic" ? (
             <button
               type="button"
               className="rounded bg-cream px-3 py-1.5 text-sm font-medium text-ink"
@@ -257,12 +512,36 @@ export function Studio() {
           ) : (
             <button
               type="button"
-              className="rounded bg-cream px-3 py-1.5 text-sm font-medium text-ink"
+              className="rounded bg-cream px-3 py-1.5 text-sm font-medium text-ink disabled:opacity-50"
+              disabled={live}
               onClick={() => void startMic()}
             >
               {studioChrome.micStart}
             </button>
           )}
+          <label className="rounded border border-line px-3 py-1.5 text-sm text-cream">
+            {studioChrome.filePick}
+            <input
+              type="file"
+              accept="audio/*"
+              className="hidden"
+              disabled={live}
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) void startFile(file);
+                event.currentTarget.value = "";
+              }}
+            />
+          </label>
+          {live && source === "file" ? (
+            <button
+              type="button"
+              className="rounded bg-cream px-3 py-1.5 text-sm font-medium text-ink"
+              onClick={() => void stopFile()}
+            >
+              {studioChrome.fileStop}
+            </button>
+          ) : null}
           <span className="text-sm text-mute">
             {captions.status === "listening"
               ? studioChrome.statusListening
@@ -297,6 +576,24 @@ export function Studio() {
           ) : (
             <span className="text-mute">{studioChrome.captionsPlaceholder}</span>
           )}
+        </div>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            className="rounded border border-line px-2 py-1 text-xs text-cream disabled:opacity-50"
+            disabled={!studioCaptionText(captions)}
+            onClick={() => void copyCaptions()}
+          >
+            {studioChrome.fileCopy}
+          </button>
+          <button
+            type="button"
+            className="rounded border border-line px-2 py-1 text-xs text-cream disabled:opacity-50"
+            disabled={!studioCaptionText(captions)}
+            onClick={() => void saveCaptions()}
+          >
+            {studioChrome.fileSave}
+          </button>
         </div>
       </section>
 

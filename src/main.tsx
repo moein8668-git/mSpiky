@@ -1,7 +1,7 @@
 import { StrictMode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { OverlayApp } from "./overlay/OverlayApp";
-import { Studio } from "./studio/Studio";
+import { StudioApp } from "./studio/StudioApp";
 import "./overlay/mspiky-api";
 import "./index.css";
 
@@ -25,7 +25,7 @@ function Root() {
     );
   }, [surface]);
 
-  return surface === "overlay" ? <OverlayApp /> : <Studio />;
+  return surface === "overlay" ? <OverlayApp /> : <StudioApp />;
 }
 
 createRoot(document.getElementById("root")!).render(

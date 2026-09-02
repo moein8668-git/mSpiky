@@ -21,6 +21,7 @@ export type LiveConnect = (
   options: {
     apiKey: string;
     mode: TranscriptMode;
+    pipe?: unknown;
   },
   callbacks: {
     onEvent(event: GeminiShapedEvent): void;

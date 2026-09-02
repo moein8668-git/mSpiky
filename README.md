@@ -1,31 +1,54 @@
-# Live Transcribe
+# mSpiky
 
-Local web app that streams your microphone or an audio file to **Gemini 3.5 Transcribe Live** and shows captions as the audio is heard.
+Desktop dictation for Windows, macOS, and Linux. Press a hotkey, speak, and mSpiky Flushes text into whatever app already has the caret. You bring your own Gemini Key from [Google AI Studio](https://aistudio.google.com/apikey).
 
-## Setup
+Studio handles settings, optional file transcription with live captions, and text-only history. The Overlay stays on top, does not steal focus, and never stores audio.
 
-1. Get an API key from [Google AI Studio](https://aistudio.google.com/apikey).
-2. Copy `.env.example` to `.env` and set `GEMINI_API_KEY`.
-3. Install and run:
+## Download
+
+Prebuilt installers are published on [GitHub Releases](https://github.com/moein8668-git/mSpiky/releases) for:
+
+- Windows (NSIS installer)
+- macOS (DMG)
+- Linux (AppImage and deb)
+
+You do not need Node.js to run mSpiky.
+
+### Unsigned builds
+
+These releases are not code-signed yet.
+
+- **Windows:** SmartScreen may warn on first launch. Choose **More info → Run anyway** if you trust the download.
+- **macOS:** Gatekeeper may block the app. Open **System Settings → Privacy & Security** and allow mSpiky, or right-click the app and choose **Open**.
+
+## First run
+
+1. Paste your Gemini Key in Studio.
+2. Allow microphone access when prompted.
+3. On macOS, enable **Accessibility** so Flush can paste into other apps.
+4. Optional: configure a SOCKS5 **Pipe** if direct Gemini access is blocked on your network.
+
+Default Dictation hotkey: **Control+Shift+Space** (tap to start/stop). Push-to-talk is available where the native key listener is supported; some Linux desktops show a notice in Settings instead.
+
+## Build from source (developers)
 
 ```bash
 npm install
-npm run dev
+npm run dev:desktop
 ```
 
-4. Open [http://localhost:5173](http://localhost:5173).
+Package installers locally:
 
-If `.env` has no key, the app shows a key field instead. That value stays in this browser only.
+```bash
+npm run dist
+```
 
-## How to use
+Artifacts land in `release/`.
 
-- **Start mic**: grant microphone access. Words appear while you speak.
-- **Transcribe a file**: pick wav, mp3, m4a, webm, and similar. The file plays through the speakers and captions follow playback.
-- **Smart** cleans fillers and self-corrections. **Verbatim** keeps word-for-word speech.
-- Pick a language if you know it. Leave detect on if you do not.
+## License
 
-## Notes
+MIT. See [LICENSE](LICENSE).
 
-- The browser sends 16 kHz PCM to a local server. The server holds the API key and talks to Gemini over the Live API.
-- Live sessions last about 10 minutes. Start again for a longer sitting.
-- Headphones help when using the mic, so playback does not get recaptured.
+## Acknowledgments
+
+Overlay window behavior, global hotkey handling, and caret-inject patterns are informed by [OpenWhispr](https://github.com/OpenWhispr/openwhispr) (MIT). That project is not vendored here; mSpiky reimplements the ideas in this tree.

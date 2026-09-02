@@ -1,7 +1,6 @@
 import { expect, test } from "vitest";
 import {
   createSessionSettings,
-  type SessionSettings,
 } from "./session-settings";
 
 test("defaults are Smart formatting", () => {
@@ -9,14 +8,16 @@ test("defaults are Smart formatting", () => {
     read: () => null,
     write() {},
   });
-  expect(settings.get()).toEqual({
+  expect(settings.get()).toMatchObject({
     micId: "",
     mode: "smart",
+    activationMode: "tap",
   });
 });
 
 test("save replaces mic and mode for the next Session", () => {
-  let stored: SessionSettings | null = null;
+  let stored: ReturnType<ReturnType<typeof createSessionSettings>["get"]> | null =
+    null;
   const settings = createSessionSettings({
     read: () => stored,
     write(next) {
@@ -25,7 +26,7 @@ test("save replaces mic and mode for the next Session", () => {
   });
 
   settings.save({ micId: "mic-2", mode: "verbatim" });
-  expect(settings.get()).toEqual({
+  expect(settings.get()).toMatchObject({
     micId: "mic-2",
     mode: "verbatim",
   });

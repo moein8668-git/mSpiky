@@ -2,6 +2,13 @@
   "name": "live-transcribe",
   "private": true,
   "version": "0.1.0",
+  "description": "Desktop dictation overlay for Gemini Live",
+  "author": "mSpiky contributors",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/moein8668-git/mSpiky.git"
+  },
   "type": "module",
   "main": "dist-electron/main.cjs",
   "scripts": {
@@ -13,6 +20,10 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.electron.json",
     "build:electron": "node scripts/build-electron.mjs",
+    "dist": "npm run build && npm run build:electron && electron-builder",
+    "dist:win": "npm run build && npm run build:electron && electron-builder --win",
+    "dist:mac": "npm run build && npm run build:electron && electron-builder --mac",
+    "dist:linux": "npm run build && npm run build:electron && electron-builder --linux",
     "dev:desktop": "concurrently -n web,desktop -c magenta,green \"vite\" \"npm run dev:electron\"",
     "dev:electron": "node scripts/build-electron.mjs && wait-on http://127.0.0.1:5173 && electron ."
   },
@@ -24,6 +35,7 @@
     "express": "^5.1.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
+    "socks-proxy-agent": "^8.0.5",
     "ws": "^8.18.3"
   },
   "devDependencies": {
@@ -36,11 +48,48 @@
     "@vitejs/plugin-react": "^5.0.2",
     "concurrently": "^9.2.1",
     "electron": "^44.0.0",
+    "electron-builder": "^26.15.3",
     "tailwindcss": "^4.1.12",
     "tsx": "^4.20.5",
     "typescript": "^5.9.2",
     "vite": "^7.1.3",
     "vitest": "^4.1.11",
     "wait-on": "^9.1.0"
+  },
+  "build": {
+    "appId": "com.mspiky.desktop",
+    "productName": "mSpiky",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**",
+      "dist-electron/**",
+      "package.json"
+    ],
+    "extraMetadata": {
+      "main": "dist-electron/main.cjs"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "category": "public.app-category.productivity"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Utility"
+    },
+    "publish": [
+      "github"
+    ]
   }
 }

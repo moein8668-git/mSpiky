@@ -6,12 +6,19 @@ import {
   type Session,
   type Transcription,
 } from "@google/genai";
+import { SocksProxyAgent } from "socks-proxy-agent";
 import type { LiveConnect } from "../../src/session/gemini-live-session";
 import type { GeminiShapedEvent } from "../../src/dictation/map-gemini-event";
 import { sessionTranscriptionConfig } from "../../src/session/session-transcription-config";
+import { buildSocksProxyUrl } from "../../src/session/pipe-url";
+import type { PipeSettings } from "../../src/settings/app-settings";
 
 const DEFAULT_MODEL =
   process.env.GEMINI_TRANSCRIBE_MODEL || "gemini-3.5-transcribe-live";
+
+export type PipeConnectConfig = PipeSettings & {
+  password: string | null;
+};
 
 type TranscriptionConfig = AudioTranscriptionConfig & {
   mode?: "smart" | "verbatim";
@@ -45,7 +52,30 @@ function eventsFromMessage(message: LiveServerMessage): GeminiShapedEvent[] {
 }
 
 export const connectGeminiLive: LiveConnect = async (options, callbacks) => {
-  const ai = new GoogleGenAI({ apiKey: options.apiKey });
+  const pipe = "pipe" in options ? (options as { pipe?: PipeConnectConfig | null }).pipe : null;
+  if (pipe?.enabled) {
+    try {
+      buildSocksProxyUrl(pipe, pipe.password);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Pipe is not configured.";
+      callbacks.onError(message);
+      throw new Error(message);
+    }
+  }
+
+  const httpOptions =
+    pipe?.enabled
+      ? {
+          agent: new SocksProxyAgent(
+            buildSocksProxyUrl(pipe, pipe.password),
+          ),
+        }
+      : undefined;
+
+  const ai = new GoogleGenAI({
+    apiKey: options.apiKey,
+    httpOptions: httpOptions as never,
+  });
   const transcription: TranscriptionConfig = sessionTranscriptionConfig(options.mode);
 
   const tryConnect = (responseModalities: Modality[]) =>

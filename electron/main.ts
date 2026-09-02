@@ -1,15 +1,18 @@
 import {
   app,
   BrowserWindow,
+  dialog,
   globalShortcut,
   ipcMain,
   Menu,
   nativeImage,
   screen,
+  shell as electronShell,
   Tray,
   type MenuItemConstructorOptions,
 } from "electron";
 import path from "node:path";
+import fs from "node:fs";
 import { caretInjectFromPasteFirst } from "../src/dictation/caret-inject-adapter";
 import { createDictation } from "../src/dictation/dictation";
 import { createGeminiLiveSession } from "../src/session/gemini-live-session";
@@ -21,18 +24,26 @@ import {
 import { createStudioCaptions } from "../src/studio/studio-captions";
 import { createElectronCaretInject } from "./caret-inject";
 import { createElectronKeyStore } from "./secrets/key-store";
+import { createElectronSecretStore } from "./secrets/secret-store";
 import { createElectronSessionSettings } from "./settings/session-settings";
 import { createElectronOverlayPositionStore } from "./settings/overlay-position";
 import { clampOverlayPosition, resolveOverlayPosition } from "../src/settings/overlay-position";
 import { createElectronStudioHistory } from "./history/studio-history";
 import { studioHistoryText } from "../src/history/studio-history";
-import { connectGeminiLive } from "./session/connect-gemini-live";
+import {
+  connectGeminiLive,
+  type PipeConnectConfig,
+} from "./session/connect-gemini-live";
 import { overlayWindowOptions, studioWindowOptions } from "./window-options";
 import {
   OVERLAY_HEIGHT,
   OVERLAY_WIDTH,
   cursorOverOverlayDragHandle,
 } from "../src/overlay/overlay-layout";
+import { createDictationHotkeys } from "./hotkeys/dictation-hotkeys";
+import { testSocksReachable } from "./pipe/test-socks";
+import { pushToTalkSupportedOnLinux } from "../src/platform/push-to-talk";
+import type { LiveConnect } from "../src/session/gemini-live-session";
 
 const DEV_URL = "http://127.0.0.1:5173";
 
@@ -52,7 +63,8 @@ void app.whenReady().then(() => {
   const preloadPath = path.join(__dirname, "preload.cjs");
   const studioPreloadPath = path.join(__dirname, "preload-studio.cjs");
   const keyStore = createElectronKeyStore();
-  const sessionSettings = createElectronSessionSettings();
+  const pipeSecrets = createElectronSecretStore("pipe-password");
+  const appSettings = createElectronSessionSettings();
   const overlayPosition = createElectronOverlayPositionStore();
   const studioHistory = createElectronStudioHistory();
   const studio = new BrowserWindow(studioWindowOptions(studioPreloadPath));
@@ -164,11 +176,23 @@ void app.whenReady().then(() => {
 
   syncOverlayBounds();
 
+  function getPipeConfig(): PipeConnectConfig | null {
+    const settings = appSettings.get();
+    if (!settings.pipe.enabled) return null;
+    return {
+      ...settings.pipe,
+      password: pipeSecrets.getKey(),
+    };
+  }
+
+  const liveConnect: LiveConnect = (options, callbacks) =>
+    connectGeminiLive({ ...options, pipe: getPipeConfig() }, callbacks);
+
   const liveDeps = {
     getKey() {
       return keyStore.getKey();
     },
-    connect: connectGeminiLive,
+    connect: liveConnect,
   };
   const captions = createStudioCaptions({
     session: createGeminiLiveSession(liveDeps),
@@ -185,11 +209,11 @@ void app.whenReady().then(() => {
     session: createGeminiLiveSession(liveDeps),
     caretInject: caretInjectFromPasteFirst(pasteFirst),
     startOptions() {
-      const settings = sessionSettings.get();
+      const settings = appSettings.get();
       return { mode: settings.mode };
     },
     onFlush(text) {
-      appendHistory(text, sessionSettings.get().mode, "overlay");
+      appendHistory(text, appSettings.get().mode, "overlay");
     },
     onSnapshotChange: () => {
       shell?.refreshOverlay();
@@ -250,6 +274,7 @@ void app.whenReady().then(() => {
         captions.stop();
         void dictation.stop();
         globalShortcut.unregisterAll();
+        dictationHotkeys.unregisterAll();
         app.quit();
       },
     },
@@ -269,12 +294,44 @@ void app.whenReady().then(() => {
         }
       },
     },
-    hotkeys: {
-      register(chord, handler) {
-        globalShortcut.register(chord, handler);
+  });
+
+  function syncLoginItem() {
+    const settings = appSettings.get();
+    app.setLoginItemSettings({
+      openAtLogin: settings.launchAtLogin,
+    });
+  }
+
+  const dictationHotkeys = createDictationHotkeys({
+    getSettings: () => appSettings.get(),
+    handlers: {
+      toggleDictation: () => {
+        shell.toggleDictation();
+      },
+      pushStart: () => {
+        if (dictation.snapshot().status !== "idle") return;
+        if (!keyStore.hasKey()) {
+          dictation.showKeyMissing("Add your Key in Studio Settings.");
+          shell.refreshOverlay();
+          return;
+        }
+        captions.stop();
+        dictation.start();
+        shell.refreshOverlay();
+      },
+      pushEnd: () => {
+        if (dictation.snapshot().status === "idle") return;
+        void dictation.stop().then(() => shell.refreshOverlay());
+      },
+      pauseDictation: () => {
+        void shell.pauseDictation();
       },
     },
   });
+
+  dictationHotkeys.sync();
+  syncLoginItem();
 
   ipcMain.handle("mspiky:key-has", () => keyStore.hasKey());
 
@@ -294,7 +351,7 @@ void app.whenReady().then(() => {
         ? "verbatim"
         : "smart";
     captions.start({ mode });
-    sessionSettings.save({ mode });
+    appSettings.save({ mode });
   });
 
   function pushHistoryUpdate() {
@@ -329,15 +386,63 @@ void app.whenReady().then(() => {
     captions.fail(typeof message === "string" ? message : NO_MIC_MESSAGE);
   });
 
-  ipcMain.handle("mspiky:settings-get", () => sessionSettings.get());
+  ipcMain.handle("mspiky:settings-get", () => appSettings.get());
 
   ipcMain.handle("mspiky:settings-save", (_event, value: unknown) => {
     if (!value || typeof value !== "object") return;
-    const record = value as Record<string, unknown>;
-    sessionSettings.save({
-      micId: typeof record.micId === "string" ? record.micId : undefined,
-      mode: record.mode === "verbatim" || record.mode === "smart" ? record.mode : undefined,
+    appSettings.save(value as Partial<ReturnType<typeof appSettings.get>>);
+    dictationHotkeys.sync();
+    syncLoginItem();
+  });
+
+  ipcMain.handle("mspiky:pipe-password-save", (_event, value: unknown) => {
+    if (typeof value !== "string" || !value.trim()) return;
+    pipeSecrets.saveKey(value);
+  });
+
+  ipcMain.handle("mspiky:pipe-test", async () => {
+    const settings = appSettings.get();
+    if (!settings.pipe.enabled) {
+      return { ok: false, message: "Turn on Pipe first." };
+    }
+    try {
+      await testSocksReachable(settings.pipe.host, settings.pipe.port);
+      return { ok: true, message: "Pipe reachable." };
+    } catch (error) {
+      return {
+        ok: false,
+        message: error instanceof Error ? error.message : "Pipe test failed.",
+      };
+    }
+  });
+
+  ipcMain.handle("mspiky:platform", () => process.platform);
+
+  ipcMain.handle("mspiky:open-accessibility", async () => {
+    if (process.platform === "darwin") {
+      await electronShell.openExternal(
+        "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
+      );
+    }
+  });
+
+  ipcMain.handle("mspiky:first-run-complete", () => {
+    appSettings.save({ firstRunComplete: true });
+  });
+
+  ipcMain.handle("mspiky:push-to-talk-available", () =>
+    pushToTalkSupportedOnLinux(),
+  );
+
+  ipcMain.handle("mspiky:studio-save-transcript", async (_event, text: unknown) => {
+    if (typeof text !== "string" || !text.trim()) return false;
+    const result = await dialog.showSaveDialog(studio, {
+      defaultPath: "mspiky-transcript.txt",
+      filters: [{ name: "Text", extensions: ["txt"] }],
     });
+    if (result.canceled || !result.filePath) return false;
+    fs.writeFileSync(result.filePath, text, "utf8");
+    return true;
   });
 
   ipcMain.handle("mspiky:history-list", () => studioHistory.list());

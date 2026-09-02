@@ -1,7 +1,6 @@
 import { expect, test } from "vitest";
 import {
   createShell,
-  DEFAULT_DICTATION_HOTKEY,
   overlayChrome,
   studioChrome,
 } from "./shell";
@@ -40,7 +39,6 @@ function createHarness() {
   const studioNotices: string[] = [];
   let menu: { id: string; label: string }[] = [];
   let snapshot = idleSnapshot();
-  let hotkeyHandler: (() => void) | undefined;
   let hasKey = true;
 
   const shell = createShell({
@@ -114,11 +112,6 @@ function createHarness() {
         pushed.push(next);
       },
     },
-    hotkeys: {
-      register(chord, handler) {
-        if (chord === DEFAULT_DICTATION_HOTKEY) hotkeyHandler = handler;
-      },
-    },
   });
 
   return {
@@ -128,7 +121,6 @@ function createHarness() {
     dictationCalls,
     pushed,
     getMenu: () => menu,
-    hotkey: () => hotkeyHandler?.(),
     setHasKey(next: boolean) {
       hasKey = next;
     },
@@ -144,11 +136,6 @@ test("tray items are Show Studio, Start Dictation, and Quit", () => {
     { id: "start-dictation", label: "Start Dictation" },
     { id: "quit", label: "Quit" },
   ]);
-});
-
-test("registers the default Dictation hotkey", () => {
-  const { hotkey } = createHarness();
-  expect(hotkey).toBeTypeOf("function");
 });
 
 test("refreshOverlay does not call overlay.show again while already visible", () => {
@@ -176,7 +163,6 @@ test("refreshOverlay does not call overlay.show again while already visible", ()
     keyStore: { hasKey() { return true; } },
     studioNotice: { keyMissing() {} },
     overlaySnapshot: { push() {} },
-    hotkeys: { register() {} },
   });
 
   shell.refreshOverlay();
@@ -185,21 +171,21 @@ test("refreshOverlay does not call overlay.show again while already visible", ()
   expect(overlayShowCalls).toBe(1);
 });
 
-test("Dictation hotkey starts Dictation and shows Overlay", () => {
-  const { hotkey, shown, dictationCalls, pushed } = createHarness();
+test("toggleDictation starts Dictation and shows Overlay", () => {
+  const { shell, shown, dictationCalls, pushed } = createHarness();
 
-  hotkey();
+  shell.toggleDictation();
 
   expect(dictationCalls.start).toBe(1);
   expect(shown.overlay).toBe(true);
   expect(pushed.at(-1)?.status).toBe("listening");
 });
 
-test("a second Dictation hotkey tap Stops and hides Overlay", async () => {
-  const { hotkey, shown, dictationCalls } = createHarness();
+test("a second Dictation toggle Stops and hides Overlay", async () => {
+  const { shell, shown, dictationCalls } = createHarness();
 
-  hotkey();
-  hotkey();
+  shell.toggleDictation();
+  shell.toggleDictation();
   await Promise.resolve();
 
   expect(dictationCalls.start).toBe(1);
@@ -221,9 +207,9 @@ test("tray Start Dictation toggles Dictation like the hotkey", async () => {
 });
 
 test("Pause keeps Overlay visible", () => {
-  const { shell, hotkey, shown, dictationCalls } = createHarness();
+  const { shell, shown, dictationCalls } = createHarness();
 
-  hotkey();
+  shell.toggleDictation();
   shell.pauseDictation();
 
   expect(dictationCalls.pause).toBe(1);
@@ -276,11 +262,11 @@ test("closing Studio does not hide an open Overlay", () => {
   });
 });
 
-test("Dictation hotkey without a Key shows an Overlay error and does not start", async () => {
-  const { hotkey, dictationCalls, pushed, setHasKey } = createHarness();
+test("Dictation without a Key shows an Overlay error and does not start", async () => {
+  const { shell, dictationCalls, pushed, setHasKey } = createHarness();
 
   setHasKey(false);
-  hotkey();
+  shell.toggleDictation();
   await Promise.resolve();
 
   expect(dictationCalls.start).toBe(0);

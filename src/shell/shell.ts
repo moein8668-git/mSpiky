@@ -34,6 +34,46 @@ export const studioChrome = {
   historyCopy: "Copy",
   historySourceStudio: "Studio",
   historySourceOverlay: "Overlay",
+  fileHeading: "File transcription",
+  fileBody:
+    "Play a saved voice file and watch live captions. File audio stays in memory only.",
+  filePick: "Choose audio file",
+  fileStart: "Transcribe file",
+  fileStop: "Stop file",
+  fileCopy: "Copy transcript",
+  fileSave: "Save transcript",
+  settingsHeading: "Dictation",
+  settingsBody: "Tap is the default. Push-to-talk needs a native key listener.",
+  activationLabel: "Activation",
+  activationTap: "Tap hotkey",
+  activationPush: "Push-to-talk (hold)",
+  dictationHotkeyLabel: "Dictation hotkey",
+  pauseHotkeyLabel: "Pause hotkey (optional)",
+  launchAtLoginLabel: "Launch at login",
+  chimesLabel: "Sound chimes",
+  pipeHeading: "Pipe",
+  pipeBody:
+    "Optional SOCKS5 tunnel for Gemini. When enabled, mSpiky never falls back to direct internet.",
+  pipeEnabled: "Use Pipe",
+  pipeHost: "Host",
+  pipePort: "Port",
+  pipeUser: "User",
+  pipePassword: "Password",
+  pipeRemoteDns: "Remote DNS",
+  pipeTest: "Test Pipe",
+  pipeTestOk: "Pipe reachable",
+  pipeTestFail: "Pipe test failed",
+  pushToTalkUnavailable:
+    "Push-to-talk is not available on this Linux desktop. Use tap activation instead.",
+  firstRunHeading: "Welcome to mSpiky",
+  firstRunBody: "Set up your Key and microphone before your first Dictation.",
+  firstRunKeyStep: "Add your Key",
+  firstRunMicStep: "Allow microphone access",
+  firstRunAccessibilityStep: "Enable Accessibility (macOS)",
+  firstRunPipeStep: "Optional Pipe",
+  firstRunFinish: "Finish setup",
+  firstRunSkipPipe: "Skip Pipe",
+  firstRunOpenAccessibility: "Open Accessibility settings",
 };
 
 export const overlayChrome = {
@@ -90,6 +130,18 @@ export type HotkeySurface = {
   register(chord: string, handler: () => void): void;
 };
 
+export type ShellControls = {
+  showStudio(): void;
+  closeStudio(): void;
+  startDictation(): void;
+  toggleDictation(): void;
+  pauseDictation(): Promise<void>;
+  resumeDictation(): void;
+  refreshOverlay(): void;
+  quit(): void;
+  snapshot(): ShellSnapshot;
+};
+
 export type ShellSnapshot = {
   studioVisible: boolean;
   overlayVisible: boolean;
@@ -111,8 +163,7 @@ export function createShell(adapters: {
   keyStore: KeyStoreSurface;
   studioNotice: StudioNoticeSurface;
   overlaySnapshot: OverlaySnapshotSurface;
-  hotkeys: HotkeySurface;
-}) {
+}): ShellControls {
   adapters.tray.setMenu(TRAY_ITEMS);
 
   let studioVisible = false;
@@ -133,7 +184,7 @@ export function createShell(adapters: {
     adapters.overlaySnapshot.push(snapshot);
   }
 
-  async function toggleDictation() {
+  async function runToggleDictation() {
     const { status } = adapters.dictation.snapshot();
     if (status === "idle") {
       if (!adapters.keyStore.hasKey()) {
@@ -152,10 +203,6 @@ export function createShell(adapters: {
     syncOverlay();
   }
 
-  adapters.hotkeys.register(DEFAULT_DICTATION_HOTKEY, () => {
-    void toggleDictation();
-  });
-
   return {
     showStudio() {
       studioVisible = true;
@@ -166,7 +213,10 @@ export function createShell(adapters: {
       adapters.studio.hide();
     },
     startDictation() {
-      void toggleDictation();
+      void runToggleDictation();
+    },
+    toggleDictation() {
+      void runToggleDictation();
     },
     async pauseDictation() {
       await adapters.dictation.pause();

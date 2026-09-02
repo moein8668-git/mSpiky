@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from "electron";
+import type { AppSettings } from "../src/settings/app-settings";
 import type { SessionStartOptions } from "../src/dictation/dictation";
-import type { SessionSettings } from "../src/settings/session-settings";
 import type { StudioHistoryEntry } from "../src/history/studio-history";
 import type { StudioCaptionSnapshot } from "../src/studio/studio-captions";
 
@@ -24,9 +24,9 @@ contextBridge.exposeInMainWorld("mspikyStudio", {
     return ipcRenderer.invoke("mspiky:studio-start", options) as Promise<void>;
   },
   getSettings() {
-    return ipcRenderer.invoke("mspiky:settings-get") as Promise<SessionSettings>;
+    return ipcRenderer.invoke("mspiky:settings-get") as Promise<AppSettings>;
   },
-  saveSettings(settings: Partial<SessionSettings>) {
+  saveSettings(settings: Partial<AppSettings>) {
     return ipcRenderer.invoke("mspiky:settings-save", settings) as Promise<void>;
   },
   listHistory() {
@@ -64,5 +64,26 @@ contextBridge.exposeInMainWorld("mspikyStudio", {
     return () => {
       ipcRenderer.removeListener("mspiky:studio-captions", handler);
     };
+  },
+  saveTranscript(text: string) {
+    return ipcRenderer.invoke("mspiky:studio-save-transcript", text) as Promise<boolean>;
+  },
+  testPipe() {
+    return ipcRenderer.invoke("mspiky:pipe-test") as Promise<{ ok: boolean; message: string }>;
+  },
+  savePipePassword(password: string) {
+    return ipcRenderer.invoke("mspiky:pipe-password-save", password) as Promise<void>;
+  },
+  getPlatform() {
+    return ipcRenderer.invoke("mspiky:platform") as Promise<string>;
+  },
+  openAccessibilitySettings() {
+    return ipcRenderer.invoke("mspiky:open-accessibility") as Promise<void>;
+  },
+  completeFirstRun() {
+    return ipcRenderer.invoke("mspiky:first-run-complete") as Promise<void>;
+  },
+  pushToTalkAvailable() {
+    return ipcRenderer.invoke("mspiky:push-to-talk-available") as Promise<boolean>;
   },
 });
