@@ -82,6 +82,10 @@ void app.whenReady().then(() => {
   overlay.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   overlay.setIgnoreMouseEvents(true, { forward: true });
 
+  let overlayShown = false;
+  let overlayLastMovedAt = 0;
+  let overlayClampTimer: ReturnType<typeof setTimeout> | null = null;
+
   let overlayClickThrough = true;
   let overlayMouseTimer: ReturnType<typeof setInterval> | null = null;
   let overlayMoveSaveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -111,10 +115,28 @@ void app.whenReady().then(() => {
 
   function syncOverlayMouseCapture() {
     if (overlay.isDestroyed() || !overlay.isVisible()) return;
+    if (Date.now() - overlayLastMovedAt < 300) {
+      setOverlayClickThrough(false);
+      return;
+    }
     const [wx, wy] = overlay.getPosition();
     const cursor = screen.getCursorScreenPoint();
     const onHandle = cursorOverOverlayDragHandle(wx, wy, cursor.x, cursor.y);
     setOverlayClickThrough(!onHandle);
+  }
+
+  function scheduleOverlayClamp() {
+    if (overlayClampTimer) clearTimeout(overlayClampTimer);
+    overlayClampTimer = setTimeout(() => {
+      if (overlay.isDestroyed()) return;
+      const [x, y] = overlay.getPosition();
+      const display = screen.getDisplayMatching({ x, y, ...overlaySize() });
+      const point = clampOverlayPosition({ x, y }, display.workArea, overlaySize());
+      if (point.x !== x || point.y !== y) {
+        overlay.setPosition(point.x, point.y);
+      }
+      overlayLastMovedAt = 0;
+    }, 120);
   }
 
   function startOverlayMouseCapture() {
@@ -196,13 +218,17 @@ void app.whenReady().then(() => {
     },
     overlay: {
       show() {
+        if (overlayShown) return;
         syncOverlayBounds();
         overlay.showInactive();
         startOverlayMouseCapture();
+        overlayShown = true;
       },
       hide() {
+        if (!overlayShown) return;
         overlay.hide();
         stopOverlayMouseCapture();
+        overlayShown = false;
       },
     },
     tray: {
@@ -353,16 +379,14 @@ void app.whenReady().then(() => {
     event.preventDefault();
     overlay.hide();
     stopOverlayMouseCapture();
+    overlayShown = false;
   });
 
   overlay.on("moved", () => {
-    const [x, y] = overlay.getPosition();
-    const display = screen.getDisplayMatching({ x, y, ...overlaySize() });
-    const point = clampOverlayPosition({ x, y }, display.workArea, overlaySize());
-    if (point.x !== x || point.y !== y) {
-      overlay.setPosition(point.x, point.y);
-    }
+    overlayLastMovedAt = Date.now();
+    setOverlayClickThrough(false);
     scheduleOverlayPositionSave();
+    scheduleOverlayClamp();
   });
 
   app.on("window-all-closed", () => {

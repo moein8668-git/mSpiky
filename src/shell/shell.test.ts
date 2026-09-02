@@ -151,6 +151,40 @@ test("registers the default Dictation hotkey", () => {
   expect(hotkey).toBeTypeOf("function");
 });
 
+test("refreshOverlay does not call overlay.show again while already visible", () => {
+  let overlayShowCalls = 0;
+  const shell = createShell({
+    studio: { show() {}, hide() {} },
+    overlay: {
+      show() {
+        overlayShowCalls += 1;
+      },
+      hide() {},
+    },
+    tray: { setMenu() {} },
+    app: { quit() {} },
+    dictation: {
+      start() {},
+      showKeyMissing() {},
+      pause() {},
+      resume() {},
+      stop() {},
+      snapshot() {
+        return listeningSnapshot({ meter: 0.5 });
+      },
+    },
+    keyStore: { hasKey() { return true; } },
+    studioNotice: { keyMissing() {} },
+    overlaySnapshot: { push() {} },
+    hotkeys: { register() {} },
+  });
+
+  shell.refreshOverlay();
+  shell.refreshOverlay();
+
+  expect(overlayShowCalls).toBe(1);
+});
+
 test("Dictation hotkey starts Dictation and shows Overlay", () => {
   const { hotkey, shown, dictationCalls, pushed } = createHarness();
 

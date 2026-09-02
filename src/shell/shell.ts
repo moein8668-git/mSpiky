@@ -116,12 +116,20 @@ export function createShell(adapters: {
   adapters.tray.setMenu(TRAY_ITEMS);
 
   let studioVisible = false;
+  let overlayVisible = false;
   let running = true;
 
   function syncOverlay() {
     const snapshot = adapters.dictation.snapshot();
-    if (snapshot.overlayVisible) adapters.overlay.show();
-    else adapters.overlay.hide();
+    if (snapshot.overlayVisible) {
+      if (!overlayVisible) {
+        adapters.overlay.show();
+        overlayVisible = true;
+      }
+    } else if (overlayVisible) {
+      adapters.overlay.hide();
+      overlayVisible = false;
+    }
     adapters.overlaySnapshot.push(snapshot);
   }
 
