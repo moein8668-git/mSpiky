@@ -1,10 +1,12 @@
 node_modules
 dist
 dist-electron
+release
 .env
 *.local
 .DS_Store
 Thumbs.db
+*.7z
 
 # Research clone of OpenWhispr. Do not vendor.
 .scratch/openwhispr/

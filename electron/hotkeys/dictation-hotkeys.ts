@@ -1,6 +1,7 @@
 import { globalShortcut } from "electron";
 import type { AppSettings } from "../../src/settings/app-settings";
-import { hotkeyToElectron, validateHotkey } from "../../src/settings/hotkey";
+import { planDictationHotkeys } from "../../src/settings/dictation-hotkey-plan";
+import { hotkeyToElectron, matchesHotkey, type HotkeyEvent } from "../../src/settings/hotkey";
 import {
   pushToTalkSupportedOnLinux,
   pushToTalkUnavailableMessage,
@@ -10,7 +11,6 @@ export type DictationHotkeyHandlers = {
   toggleDictation(): void;
   pushStart(): void;
   pushEnd(): void;
-  pauseDictation(): void;
 };
 
 export function createDictationHotkeys(deps: {
@@ -37,16 +37,6 @@ export function createDictationHotkeys(deps: {
     }
   }
 
-  function registerPause(chord: string) {
-    if (!chord.trim()) return;
-    const validation = validateHotkey(chord);
-    if (!validation.ok) return;
-    const electronChord = hotkeyToElectron(chord);
-    globalShortcut.register(electronChord, () => {
-      deps.handlers.pauseDictation();
-    });
-  }
-
   function registerPush(chord: string) {
     if (!pushToTalkSupportedOnLinux()) {
       return { ok: false as const, reason: pushToTalkUnavailableMessage() };
@@ -60,21 +50,14 @@ export function createDictationHotkeys(deps: {
       };
     }
     nativeHook = hook;
-    const parts = chord.split("+").map((part) => part.trim().toLowerCase());
-    const keyPart = parts.find(
-      (part) => !["control", "ctrl", "shift", "alt", "meta", "command", "cmd", "super"].includes(part),
-    );
-    if (!keyPart) {
-      return { ok: false as const, reason: "Choose a key for push-to-talk." };
-    }
     hook.onDown((event) => {
-      if (!matchesChord(event, parts)) return;
+      if (!matchesHotkey(event, chord)) return;
       if (pushHeld) return;
       pushHeld = true;
       deps.handlers.pushStart();
     });
     hook.onUp((event) => {
-      if (!matchesChord(event, parts)) return;
+      if (!matchesHotkey(event, chord)) return;
       if (!pushHeld) return;
       pushHeld = false;
       deps.handlers.pushEnd();
@@ -86,20 +69,11 @@ export function createDictationHotkeys(deps: {
   return {
     sync() {
       unregisterAll();
-      const settings = deps.getSettings();
-      const dictation = settings.dictationHotkey;
-      const validation = validateHotkey(dictation);
-      if (!validation.ok) {
-        registerTap("Control+Shift+Space");
-      } else if (settings.activationMode === "push") {
-        const push = registerPush(dictation);
-        if (!push.ok) {
-          registerTap(dictation);
-        }
-      } else {
-        registerTap(dictation);
+      const plan = planDictationHotkeys(deps.getSettings());
+      registerTap(plan.toggleChord);
+      if (plan.pushChord) {
+        registerPush(plan.pushChord);
       }
-      registerPause(settings.pauseHotkey);
     },
     unregisterAll,
     pushToTalkUnavailableReason() {
@@ -109,13 +83,7 @@ export function createDictationHotkeys(deps: {
   };
 }
 
-type NativeKeyEvent = {
-  key: string;
-  ctrlKey: boolean;
-  shiftKey: boolean;
-  altKey: boolean;
-  metaKey: boolean;
-};
+type NativeKeyEvent = HotkeyEvent;
 
 export type NativeKeyHook = {
   start(): void;
@@ -124,29 +92,15 @@ export type NativeKeyHook = {
   onUp(handler: (event: NativeKeyEvent) => void): void;
 };
 
-function matchesChord(event: NativeKeyEvent, parts: string[]) {
-  const wantsCtrl = parts.includes("control") || parts.includes("ctrl");
-  const wantsShift = parts.includes("shift");
-  const wantsAlt = parts.includes("alt");
-  const wantsMeta =
-    parts.includes("meta") ||
-    parts.includes("command") ||
-    parts.includes("cmd") ||
-    parts.includes("super");
-  const keyPart = parts.find(
-    (part) =>
-      !["control", "ctrl", "shift", "alt", "meta", "command", "cmd", "super"].includes(
-        part,
-      ),
-  );
-  if (!keyPart) return false;
-  return (
-    event.ctrlKey === wantsCtrl &&
-    event.shiftKey === wantsShift &&
-    event.altKey === wantsAlt &&
-    event.metaKey === wantsMeta &&
-    event.key.toLowerCase() === keyPart
-  );
+function normalizeUiohookKey(name: string) {
+  const lower = name.replace(/^VC_/, "").toLowerCase();
+  if (lower === "ctrl" || lower === "ctrlright") return "control";
+  if (lower === "shiftright") return "shift";
+  if (lower === "alt" || lower === "altright" || lower === "altgr") return "alt";
+  if (lower === "meta" || lower === "metaright" || lower === "win" || lower === "command") {
+    return "meta";
+  }
+  return lower;
 }
 
 export function tryCreateNativeKeyHook(): NativeKeyHook | null {
@@ -155,7 +109,16 @@ export function tryCreateNativeKeyHook(): NativeKeyHook | null {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { uIOhook, UiohookKey } = require("uiohook-napi") as {
       uIOhook: {
-        on(event: string, handler: (event: { keycode: number }) => void): void;
+        on(
+          event: string,
+          handler: (event: {
+            keycode: number;
+            ctrlKey?: boolean;
+            shiftKey?: boolean;
+            altKey?: boolean;
+            metaKey?: boolean;
+          }) => void,
+        ): void;
         start(): void;
         stop(): void;
       };
@@ -165,7 +128,7 @@ export function tryCreateNativeKeyHook(): NativeKeyHook | null {
     let upHandler: ((event: NativeKeyEvent) => void) | null = null;
     const keyNameByCode = new Map<number, string>();
     for (const [name, code] of Object.entries(UiohookKey)) {
-      keyNameByCode.set(code, name.replace(/^VC_/, "").toLowerCase());
+      keyNameByCode.set(code, normalizeUiohookKey(name));
     }
 
     return {
@@ -173,19 +136,19 @@ export function tryCreateNativeKeyHook(): NativeKeyHook | null {
         uIOhook.on("keydown", (event) => {
           downHandler?.({
             key: keyNameByCode.get(event.keycode) ?? String(event.keycode),
-            ctrlKey: false,
-            shiftKey: false,
-            altKey: false,
-            metaKey: false,
+            ctrlKey: event.ctrlKey === true,
+            shiftKey: event.shiftKey === true,
+            altKey: event.altKey === true,
+            metaKey: event.metaKey === true,
           });
         });
         uIOhook.on("keyup", (event) => {
           upHandler?.({
             key: keyNameByCode.get(event.keycode) ?? String(event.keycode),
-            ctrlKey: false,
-            shiftKey: false,
-            altKey: false,
-            metaKey: false,
+            ctrlKey: event.ctrlKey === true,
+            shiftKey: event.shiftKey === true,
+            altKey: event.altKey === true,
+            metaKey: event.metaKey === true,
           });
         });
         uIOhook.start();

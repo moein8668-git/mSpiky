@@ -43,14 +43,17 @@ export const studioChrome = {
   fileCopy: "Copy transcript",
   fileSave: "Save transcript",
   settingsHeading: "Dictation",
-  settingsBody: "Tap is the default. Push-to-talk needs a native key listener.",
+  settingsBody:
+    "The start/stop hotkey always shows the Overlay. In push-to-talk, nothing is transcribed until you hold the talk key — even if another app has focus.",
   activationLabel: "Activation",
   activationTap: "Tap hotkey",
   activationPush: "Push-to-talk (hold)",
-  dictationHotkeyLabel: "Dictation hotkey",
-  pauseHotkeyLabel: "Pause hotkey (optional)",
+  dictationHotkeyLabel: "Start / stop hotkey",
+  pushToTalkHotkeyLabel: "Push-to-talk key",
   launchAtLoginLabel: "Launch at login",
   chimesLabel: "Sound chimes",
+  chimesHint:
+    "Short beeps on Overlay open/close, paste, and push-to-talk press/release. Off by default.",
   pipeHeading: "Pipe",
   pipeBody:
     "Optional SOCKS5 tunnel for Gemini. When enabled, mSpiky never falls back to direct internet.",
@@ -80,7 +83,7 @@ export const overlayChrome = {
   statusLabel: {
     idle: "Ready",
     listening: "Listening",
-    paused: "Paused",
+    paused: "Hold to talk",
   },
   reconnectNote: SESSION_RECONNECT_NOTE,
 };

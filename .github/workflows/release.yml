@@ -4,9 +4,19 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to build (for example v0.1.0). Leave empty to use the pushed tag."
+        required: false
+        default: ""
 
 permissions:
   contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   build:
@@ -15,26 +25,42 @@ jobs:
       matrix:
         include:
           - os: windows-latest
-            args: --win
+            args: --win --x64
           - os: macos-latest
-            args: --mac
+            args: --mac --universal
           - os: ubuntu-latest
-            args: --linux
+            args: --linux --x64
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
 
-      - run: npm ci
+      - name: Install dependencies
+        run: npm ci
 
-      - run: npm run build
+      - name: Rebuild native modules for Electron
+        run: npx electron-builder install-app-deps
 
-      - run: npm run build:electron
+      - name: Typecheck and unit tests
+        run: |
+          npm run typecheck
+          npm test
 
-      - run: npx electron-builder ${{ matrix.args }} --publish always
+      - name: Build renderer
+        run: npm run build
+
+      - name: Build Electron main
+        run: npm run build:electron
+
+      - name: Package and publish
+        run: npx electron-builder ${{ matrix.args }} --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Unsigned releases; avoid macOS signing failures in CI.
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"

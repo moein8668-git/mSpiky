@@ -40,17 +40,50 @@ import {
   OVERLAY_WIDTH,
   cursorOverOverlayDragHandle,
 } from "../src/overlay/overlay-layout";
-import { createDictationHotkeys } from "./hotkeys/dictation-hotkeys";
+import { createDictationHotkeys, tryCreateNativeKeyHook } from "./hotkeys/dictation-hotkeys";
 import { testSocksReachable } from "./pipe/test-socks";
 import { pushToTalkSupportedOnLinux } from "../src/platform/push-to-talk";
 import type { LiveConnect } from "../src/session/gemini-live-session";
 
 const DEV_URL = "http://127.0.0.1:5173";
 
-const TRAY_PNG = Buffer.from(
-  "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGUlEQVQ4T2P8z8Dwn4EIwDiqYHRtwPgfAKiuB/3XYpGxAAAAAElFTkSuQmCC",
-  "base64",
-);
+function appIconPath(...parts: string[]) {
+  if (app.isPackaged) {
+    return path.join(__dirname, "..", ...parts);
+  }
+  return path.join(app.getAppPath(), ...parts);
+}
+
+function loadAppIcon() {
+  const candidates = [
+    appIconPath("build", "icon.png"),
+    appIconPath("mspiky.png"),
+  ];
+  for (const candidate of candidates) {
+    if (!fs.existsSync(candidate)) continue;
+    const image = nativeImage.createFromPath(candidate);
+    if (!image.isEmpty()) return image;
+  }
+  return null;
+}
+
+function loadTrayIcon() {
+  const candidates = [
+    appIconPath("build", "tray-icon.png"),
+    appIconPath("build", "icon.png"),
+    appIconPath("mspiky.png"),
+  ];
+  for (const candidate of candidates) {
+    if (!fs.existsSync(candidate)) continue;
+    const image = nativeImage.createFromPath(candidate);
+    if (image.isEmpty()) continue;
+    if (process.platform === "win32") {
+      return image.resize({ width: 16, height: 16 });
+    }
+    return image.resize({ width: 22, height: 22 });
+  }
+  return nativeImage.createEmpty();
+}
 
 function rendererUrl(hash: "studio" | "overlay") {
   if (app.isPackaged) {
@@ -67,8 +100,15 @@ void app.whenReady().then(() => {
   const appSettings = createElectronSessionSettings();
   const overlayPosition = createElectronOverlayPositionStore();
   const studioHistory = createElectronStudioHistory();
-  const studio = new BrowserWindow(studioWindowOptions(studioPreloadPath));
-  const overlay = new BrowserWindow(overlayWindowOptions(preloadPath));
+  const appIcon = loadAppIcon();
+  const studio = new BrowserWindow({
+    ...studioWindowOptions(studioPreloadPath),
+    ...(appIcon ? { icon: appIcon } : {}),
+  });
+  const overlay = new BrowserWindow({
+    ...overlayWindowOptions(preloadPath),
+    ...(appIcon ? { icon: appIcon } : {}),
+  });
   void studio.loadURL(rendererUrl("studio"));
   void overlay.loadURL(rendererUrl("overlay"));
 
@@ -205,15 +245,33 @@ void app.whenReady().then(() => {
 
   const pasteFirst = createElectronCaretInject();
   let shell: ReturnType<typeof createShell>;
+
+  function playOverlayChime(kind: import("../src/audio/chime").ChimeKind) {
+    if (!appSettings.get().chimesEnabled) return;
+    if (!overlay.isDestroyed()) {
+      overlay.webContents.send("mspiky:chime", kind);
+    }
+  }
+
   const dictationCore = createDictation({
-    session: createGeminiLiveSession(liveDeps),
+    session: createGeminiLiveSession({
+      ...liveDeps,
+      // Brief grace after end-of-audio while a Draft is still finishing.
+      audioEndedAfterMs: 600,
+    }),
     caretInject: caretInjectFromPasteFirst(pasteFirst),
     startOptions() {
       const settings = appSettings.get();
       return { mode: settings.mode };
     },
+    isPushToTalk() {
+      return appSettings.get().activationMode === "push";
+    },
     onFlush(text) {
       appendHistory(text, appSettings.get().mode, "overlay");
+    },
+    onChime(kind) {
+      playOverlayChime(kind);
     },
     onSnapshotChange: () => {
       shell?.refreshOverlay();
@@ -228,8 +286,11 @@ void app.whenReady().then(() => {
   };
 
   let quitting = false;
-  const tray = new Tray(nativeImage.createFromBuffer(TRAY_PNG));
+  const tray = new Tray(loadTrayIcon());
   tray.setToolTip("mSpiky");
+  if (process.platform === "darwin" && app.dock && appIcon) {
+    app.dock.setIcon(appIcon);
+  }
 
   shell = createShell({
     studio: {
@@ -310,22 +371,14 @@ void app.whenReady().then(() => {
         shell.toggleDictation();
       },
       pushStart: () => {
-        if (dictation.snapshot().status !== "idle") return;
-        if (!keyStore.hasKey()) {
-          dictation.showKeyMissing("Add your Key in Studio Settings.");
-          shell.refreshOverlay();
-          return;
-        }
-        captions.stop();
-        dictation.start();
+        if (dictation.snapshot().status === "idle") return;
+        dictation.setTalkHeld(true);
         shell.refreshOverlay();
       },
       pushEnd: () => {
         if (dictation.snapshot().status === "idle") return;
-        void dictation.stop().then(() => shell.refreshOverlay());
-      },
-      pauseDictation: () => {
-        void shell.pauseDictation();
+        dictation.setTalkHeld(false);
+        shell.refreshOverlay();
       },
     },
   });
@@ -431,7 +484,7 @@ void app.whenReady().then(() => {
   });
 
   ipcMain.handle("mspiky:push-to-talk-available", () =>
-    pushToTalkSupportedOnLinux(),
+    pushToTalkSupportedOnLinux() && tryCreateNativeKeyHook() !== null,
   );
 
   ipcMain.handle("mspiky:studio-save-transcript", async (_event, text: unknown) => {

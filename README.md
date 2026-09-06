@@ -8,9 +8,11 @@ Studio handles settings, optional file transcription with live captions, and tex
 
 Prebuilt installers are published on [GitHub Releases](https://github.com/moein8668-git/mSpiky/releases) for:
 
-- Windows (NSIS installer)
-- macOS (DMG)
-- Linux (AppImage and deb)
+- Windows (`.msi` and NSIS `.exe`)
+- macOS (`.dmg` and `.zip`)
+- Linux (AppImage and `.deb`)
+
+Current series: **v0.1.x** (not 1.0).
 
 You do not need Node.js to run mSpiky.
 

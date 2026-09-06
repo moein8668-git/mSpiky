@@ -4,7 +4,7 @@ const shared = {
   bundle: true,
   platform: "node",
   format: "cjs",
-  external: ["electron"],
+  external: ["electron", "ws", "uiohook-napi"],
   sourcemap: true,
 };
 

@@ -1,11 +1,13 @@
+import type { ChimeKind } from "../audio/chime";
 import type { OverlaySnapshot } from "../dictation/dictation";
-import type { SessionSettings } from "../settings/session-settings";
+import type { AppSettings } from "../settings/app-settings";
 
 export type MspikyOverlayApi = {
   onSnapshot(listener: (snapshot: OverlaySnapshot) => void): () => void;
+  onChime(listener: (kind: ChimeKind) => void): () => void;
   sendPcm(pcm: Uint8Array): void;
   failMic(): void;
-  captureSettings(): Promise<SessionSettings>;
+  captureSettings(): Promise<Pick<AppSettings, "micId" | "mode" | "chimesEnabled">>;
 };
 
 declare global {

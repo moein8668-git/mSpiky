@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
+import { playChimeTone, type ChimeKind } from "../audio/chime";
 import type { OverlaySnapshot } from "../dictation/dictation";
 import { Overlay } from "./Overlay";
 import { startStudioMic, type StudioMicHandle } from "../studio/mic-capture";
+import "./mspiky-api";
 
 const idleSnapshot: OverlaySnapshot = {
   status: "idle",
@@ -12,10 +14,15 @@ const idleSnapshot: OverlaySnapshot = {
   overlayVisible: false,
 };
 
+function isLiveStatus(status: OverlaySnapshot["status"]) {
+  return status === "listening" || status === "paused";
+}
+
 export function OverlayApp() {
   const [snapshot, setSnapshot] = useState<OverlaySnapshot>(idleSnapshot);
   const captureRef = useRef<StudioMicHandle | null>(null);
   const liveRef = useRef(false);
+  const audioContextRef = useRef<AudioContext | null>(null);
   liveRef.current = snapshot.status === "listening";
 
   useEffect(() => {
@@ -26,9 +33,25 @@ export function OverlayApp() {
 
   useEffect(() => {
     const api = window.mspiky;
+    if (!api?.onChime) return;
+    return api.onChime((kind: ChimeKind) => {
+      void (async () => {
+        try {
+          const context = audioContextRef.current ?? new AudioContext();
+          audioContextRef.current = context;
+          await context.resume();
+          playChimeTone(context, kind);
+        } catch {
+          // Chimes are optional feedback.
+        }
+      })();
+    });
+  }, []);
+
+  useEffect(() => {
+    const api = window.mspiky;
     if (!api) return;
-    const holdMic =
-      snapshot.status === "listening" || snapshot.status === "paused";
+    const holdMic = isLiveStatus(snapshot.status);
 
     if (!holdMic) {
       const capture = captureRef.current;

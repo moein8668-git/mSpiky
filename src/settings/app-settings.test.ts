@@ -13,6 +13,7 @@ test("defaults use tap activation and no launch at login", () => {
     firstRunComplete: false,
     pipe: { enabled: false, remoteDns: true },
   });
+  expect(defaultAppSettings().pushToTalkHotkey).toBe("F8");
 });
 
 test("parseAppSettings keeps unknown-safe defaults", () => {

@@ -16,13 +16,13 @@ export type PrimarySelectionPort = {
 };
 
 export type TargetPort = {
-  capture(): string;
-  current(): string;
+  capture(): string | Promise<string>;
+  current(): string | Promise<string>;
 };
 
 export type PastePort = {
   canPaste(): boolean;
-  paste(): void;
+  paste(): void | Promise<void>;
 };
 
 export type InjectContextPort = {
@@ -42,6 +42,7 @@ export function createPasteFirstCaretInject(deps: {
   context: InjectContextPort;
 }) {
   let capturedTarget: string | null = null;
+  let captureReady = Promise.resolve();
   let chain = Promise.resolve();
 
   function enqueue<T>(work: () => Promise<T> | T): Promise<T> {
@@ -55,15 +56,19 @@ export function createPasteFirstCaretInject(deps: {
 
   return {
     beginDictation() {
-      capturedTarget = deps.target.capture();
+      captureReady = Promise.resolve(deps.target.capture()).then((target) => {
+        capturedTarget = target;
+      });
     },
     flush(text: string): Promise<FlushResult> {
       return enqueue(async () => {
+        await captureReady;
         if (!text.trim()) return { kind: "pasted" as const };
         if (deps.context.isPasswordField()) {
           return { kind: "skipped" as const, reason: "password-field" };
         }
-        if (capturedTarget && deps.target.current() !== capturedTarget) {
+        const currentTarget = await Promise.resolve(deps.target.current());
+        if (capturedTarget && currentTarget !== capturedTarget) {
           return { kind: "skipped" as const, reason: "target-changed" };
         }
 
@@ -83,7 +88,7 @@ export function createPasteFirstCaretInject(deps: {
         }
 
         await Promise.resolve(deps.clipboard.write(flushText));
-        deps.paste.paste();
+        await Promise.resolve(deps.paste.paste());
         await Promise.resolve(deps.clipboard.restore(savedClipboard));
         await Promise.resolve(deps.primarySelection.restore(savedPrimary));
 

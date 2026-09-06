@@ -1,7 +1,7 @@
 import type { PipeSettings } from "../settings/app-settings";
 
 export function buildSocksProxyUrl(
-  pipe: Pick<PipeSettings, "host" | "port" | "user">,
+  pipe: Pick<PipeSettings, "host" | "port" | "user" | "remoteDns">,
   password: string | null,
 ) {
   const host = pipe.host.trim();
@@ -9,11 +9,12 @@ export function buildSocksProxyUrl(
   if (!host || !port) {
     throw new Error("Pipe host and port are required.");
   }
+  const scheme = pipe.remoteDns !== false ? "socks5h" : "socks5";
   const auth =
     pipe.user.trim() && password
       ? `${encodeURIComponent(pipe.user.trim())}:${encodeURIComponent(password)}@`
       : pipe.user.trim()
         ? `${encodeURIComponent(pipe.user.trim())}@`
         : "";
-  return `socks5://${auth}${host}:${port}`;
+  return `${scheme}://${auth}${host}:${port}`;
 }

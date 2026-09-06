@@ -1,5 +1,5 @@
 import type { TranscriptMode } from "../dictation/dictation";
-import { DEFAULT_DICTATION_HOTKEY } from "./hotkey";
+import { DEFAULT_DICTATION_HOTKEY, DEFAULT_PUSH_TO_TALK_HOTKEY } from "./hotkey";
 
 export type ActivationMode = "tap" | "push";
 
@@ -16,7 +16,7 @@ export type AppSettings = {
   mode: TranscriptMode;
   activationMode: ActivationMode;
   dictationHotkey: string;
-  pauseHotkey: string;
+  pushToTalkHotkey: string;
   launchAtLogin: boolean;
   chimesEnabled: boolean;
   firstRunComplete: boolean;
@@ -36,7 +36,7 @@ export const defaultAppSettings = (): AppSettings => ({
   mode: "smart",
   activationMode: "tap",
   dictationHotkey: DEFAULT_DICTATION_HOTKEY,
-  pauseHotkey: "",
+  pushToTalkHotkey: DEFAULT_PUSH_TO_TALK_HOTKEY,
   launchAtLogin: false,
   chimesEnabled: false,
   firstRunComplete: false,
@@ -75,8 +75,10 @@ export function parseAppSettings(raw: unknown): AppSettings {
       typeof record.dictationHotkey === "string" && record.dictationHotkey.trim()
         ? record.dictationHotkey.trim()
         : base.dictationHotkey,
-    pauseHotkey:
-      typeof record.pauseHotkey === "string" ? record.pauseHotkey.trim() : base.pauseHotkey,
+    pushToTalkHotkey:
+      typeof record.pushToTalkHotkey === "string" && record.pushToTalkHotkey.trim()
+        ? record.pushToTalkHotkey.trim()
+        : base.pushToTalkHotkey,
     launchAtLogin: record.launchAtLogin === true,
     chimesEnabled: record.chimesEnabled === true,
     firstRunComplete: record.firstRunComplete === true,

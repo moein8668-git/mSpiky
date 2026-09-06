@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { TranscriptMode } from "../dictation/dictation";
 import type { AppSettings } from "../settings/app-settings";
-import { validateHotkey } from "../settings/hotkey";
+import { validateHotkey, validatePushHotkey } from "../settings/hotkey";
 import type { StudioHistoryEntry } from "../history/studio-history";
 import { KEY_MISSING_MESSAGE } from "../secrets/messages";
 import { NO_MIC_MESSAGE } from "../session/messages";
@@ -29,6 +29,7 @@ function formatHistoryWhen(createdAt: string) {
 export function Studio() {
   const [hasKey, setHasKey] = useState<boolean | null>(null);
   const [draftKey, setDraftKey] = useState("");
+  const [keyEditing, setKeyEditing] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -37,7 +38,7 @@ export function Studio() {
   const [activationMode, setActivationMode] =
     useState<AppSettings["activationMode"]>("tap");
   const [dictationHotkey, setDictationHotkey] = useState("Control+Shift+Space");
-  const [pauseHotkey, setPauseHotkey] = useState("");
+  const [pushToTalkHotkey, setPushToTalkHotkey] = useState("F8");
   const [launchAtLogin, setLaunchAtLogin] = useState(false);
   const [chimesEnabled, setChimesEnabled] = useState(false);
   const [pipeEnabled, setPipeEnabled] = useState(false);
@@ -71,7 +72,7 @@ export function Studio() {
       setMicId(settings.micId);
       setActivationMode(settings.activationMode);
       setDictationHotkey(settings.dictationHotkey);
-      setPauseHotkey(settings.pauseHotkey);
+      setPushToTalkHotkey(settings.pushToTalkHotkey);
       setLaunchAtLogin(settings.launchAtLogin);
       setChimesEnabled(settings.chimesEnabled);
       setPipeEnabled(settings.pipe.enabled);
@@ -101,7 +102,7 @@ export function Studio() {
       micId,
       activationMode,
       dictationHotkey,
-      pauseHotkey,
+      pushToTalkHotkey,
       launchAtLogin,
       chimesEnabled,
       pipe: {
@@ -117,7 +118,7 @@ export function Studio() {
     micId,
     activationMode,
     dictationHotkey,
-    pauseHotkey,
+    pushToTalkHotkey,
     launchAtLogin,
     chimesEnabled,
     pipeEnabled,
@@ -172,6 +173,7 @@ export function Studio() {
       await api.saveKey(draftKey);
       setDraftKey("");
       setHasKey(true);
+      setKeyEditing(false);
       setNotice(studioChrome.keySaved);
     } catch (error) {
       setSaveError(
@@ -273,18 +275,31 @@ export function Studio() {
   }
 
   const live = captions.status === "connecting" || captions.status === "listening";
+  const keyMasked = hasKey && !keyEditing && !draftKey;
   const dictationHotkeyError = validateHotkey(dictationHotkey);
-  const pauseHotkeyError = pauseHotkey.trim()
-    ? validateHotkey(pauseHotkey)
-    : { ok: true as const };
+  const pushToTalkHotkeyError = validatePushHotkey(pushToTalkHotkey);
+  const hotkeysClash =
+    activationMode === "push" &&
+    dictationHotkeyError.ok &&
+    pushToTalkHotkeyError.ok &&
+    dictationHotkey.trim().toLowerCase() === pushToTalkHotkey.trim().toLowerCase();
 
   return (
     <main className="mx-auto flex min-h-dvh max-w-lg flex-col gap-6 px-8 py-10">
-      <div className="space-y-2">
-        <h1 className="text-2xl font-semibold tracking-tight">
-          {studioChrome.heading}
-        </h1>
-        <p className="text-mute">{studioChrome.body}</p>
+      <div className="flex items-center gap-3">
+        <img
+          src="/mspiky.png"
+          alt=""
+          width={40}
+          height={40}
+          className="h-10 w-10 rounded-lg"
+        />
+        <div className="space-y-1">
+          <h1 className="text-2xl font-semibold tracking-tight">
+            {studioChrome.heading}
+          </h1>
+          <p className="text-mute">{studioChrome.body}</p>
+        </div>
       </div>
 
       <section className="space-y-3 rounded-lg border border-line p-4">
@@ -298,8 +313,17 @@ export function Studio() {
             type="password"
             autoComplete="off"
             className="w-full rounded border border-line bg-ink px-3 py-2 text-cream"
-            value={draftKey}
-            onChange={(event) => setDraftKey(event.target.value)}
+            value={keyMasked ? "************************" : draftKey}
+            onFocus={() => {
+              if (hasKey && !keyEditing) {
+                setKeyEditing(true);
+                setDraftKey("");
+              }
+            }}
+            onChange={(event) => {
+              setKeyEditing(true);
+              setDraftKey(event.target.value);
+            }}
           />
         </label>
         <div className="flex items-center gap-3">
@@ -367,16 +391,23 @@ export function Studio() {
         {!dictationHotkeyError.ok ? (
           <p className="text-sm text-live">{dictationHotkeyError.reason}</p>
         ) : null}
-        <label className="block space-y-1 text-sm text-mute">
-          <span>{studioChrome.pauseHotkeyLabel}</span>
-          <input
-            className="w-full rounded border border-line bg-ink px-3 py-2 text-cream"
-            value={pauseHotkey}
-            onChange={(event) => setPauseHotkey(event.target.value)}
-          />
-        </label>
-        {!pauseHotkeyError.ok ? (
-          <p className="text-sm text-live">{pauseHotkeyError.reason}</p>
+        {activationMode === "push" ? (
+          <label className="block space-y-1 text-sm text-mute">
+            <span>{studioChrome.pushToTalkHotkeyLabel}</span>
+            <input
+              className="w-full rounded border border-line bg-ink px-3 py-2 text-cream"
+              value={pushToTalkHotkey}
+              onChange={(event) => setPushToTalkHotkey(event.target.value)}
+            />
+          </label>
+        ) : null}
+        {activationMode === "push" && !pushToTalkHotkeyError.ok ? (
+          <p className="text-sm text-live">{pushToTalkHotkeyError.reason}</p>
+        ) : null}
+        {hotkeysClash ? (
+          <p className="text-sm text-live">
+            Use a different key for push-to-talk than start / stop.
+          </p>
         ) : null}
         <label className="flex items-center gap-2 text-sm text-cream">
           <input
@@ -394,6 +425,7 @@ export function Studio() {
           />
           {studioChrome.chimesLabel}
         </label>
+        <p className="text-sm text-mute">{studioChrome.chimesHint}</p>
       </section>
 
       <section className="space-y-3 rounded-lg border border-line p-4">

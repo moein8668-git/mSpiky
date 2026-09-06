@@ -1,5 +1,6 @@
 import type { FlushResult } from "../caret-inject/paste-first";
 import { flushErrorMessage } from "../caret-inject/types";
+import type { ChimeKind } from "../audio/chime";
 import { SESSION_RECONNECT_NOTE } from "../session/messages";
 
 export type OverlayStatus = "idle" | "listening" | "paused";
@@ -45,8 +46,11 @@ export function createDictation(adapters: {
   session: SessionAdapter;
   caretInject: CaretInjectAdapter;
   startOptions?: () => SessionStartOptions;
+  isPushToTalk?: () => boolean;
+  settleTimeoutMs?: number;
   onSnapshotChange?: (snapshot: OverlaySnapshot) => void;
   onFlush?: (text: string, reason: "pause" | "stop") => void;
+  onChime?: (kind: ChimeKind) => void;
 }) {
   const idleSnapshot = (): OverlaySnapshot => ({
     status: "idle",
@@ -60,15 +64,63 @@ export function createDictation(adapters: {
   let snapshot = idleSnapshot();
   let pendingFlush: "pause" | "stop" | null = null;
   let audioSettled = true;
+  let pushGated = false;
+  let needsResumeAfterTalk = false;
+  let settleTimer: ReturnType<typeof setTimeout> | undefined;
   const flushWaiters: Array<() => void> = [];
+  const settleTimeoutMs = adapters.settleTimeoutMs ?? 4000;
 
   function publish() {
     adapters.onSnapshotChange?.(snapshot);
   }
 
+  function chime(kind: ChimeKind) {
+    adapters.onChime?.(kind);
+  }
+
   function notifyFlushWaiters() {
     if (pendingFlush !== null) return;
     for (const resolve of flushWaiters.splice(0)) resolve();
+  }
+
+  function clearSettleTimer() {
+    if (settleTimer) {
+      clearTimeout(settleTimer);
+      settleTimer = undefined;
+    }
+  }
+
+  function promoteDraft() {
+    const draft = snapshot.draft.trim();
+    if (!draft) {
+      snapshot = { ...snapshot, draft: "" };
+      return;
+    }
+    snapshot = {
+      ...snapshot,
+      draft: "",
+      commits: [...snapshot.commits, draft],
+    };
+  }
+
+  function forceSettlePendingFlush() {
+    if (!pendingFlush) return;
+    // Keep spoken text: promote an unfinished Draft instead of dropping it.
+    promoteDraft();
+    audioSettled = true;
+    void scheduleSettle();
+  }
+
+  function armSettleTimeout() {
+    clearSettleTimer();
+    if (settleTimeoutMs <= 0) {
+      forceSettlePendingFlush();
+      return;
+    }
+    settleTimer = setTimeout(() => {
+      settleTimer = undefined;
+      forceSettlePendingFlush();
+    }, settleTimeoutMs);
   }
 
   let settleChain = Promise.resolve();
@@ -102,6 +154,9 @@ export function createDictation(adapters: {
       publish();
       return true;
     }
+    if (result.kind === "pasted" || result.kind === "clipboard") {
+      chime("paste");
+    }
     snapshot = {
       ...snapshot,
       commits: [],
@@ -114,12 +169,14 @@ export function createDictation(adapters: {
   async function settlePendingFlush() {
     if (!pendingFlush) return;
     if (!(await flushIfReady())) return;
+    clearSettleTimer();
     if (pendingFlush === "pause") {
       snapshot = { ...snapshot, status: "paused" };
     }
     if (pendingFlush === "stop") {
       adapters.session.stop();
       snapshot = idleSnapshot();
+      pushGated = false;
     }
     pendingFlush = null;
     publish();
@@ -146,15 +203,20 @@ export function createDictation(adapters: {
       void scheduleSettle();
     },
     onError(message) {
+      clearSettleTimer();
       adapters.session.stop();
+      pendingFlush = null;
+      pushGated = false;
       snapshot = {
-        ...snapshot,
         status: "idle",
+        draft: "",
+        commits: [],
         error: message,
         overlayVisible: true,
         meter: 0,
       };
       publish();
+      notifyFlushWaiters();
     },
     onReconnected() {
       if (snapshot.status !== "listening") return;
@@ -165,12 +227,22 @@ export function createDictation(adapters: {
 
   async function stop() {
     if (snapshot.status === "idle") return;
+    if (pendingFlush === "stop") return waitForPendingFlush();
     pendingFlush = "stop";
+    chime("close");
+    // Hide Overlay immediately on close hotkey; Draft/Flush finish in the background.
+    snapshot = { ...snapshot, overlayVisible: false };
+    publish();
+
     if (!snapshot.draft) {
-      snapshot = { ...snapshot, overlayVisible: false };
-      publish();
+      // Text on the Overlay is already committed — paste now instead of waiting
+      // for another end-of-audio grace period.
+      audioSettled = true;
+      void scheduleSettle();
+    } else {
+      adapters.session.sendEndOfAudio();
+      armSettleTimeout();
     }
-    adapters.session.sendEndOfAudio();
     await waitForPendingFlush();
   }
 
@@ -190,8 +262,11 @@ export function createDictation(adapters: {
       if (snapshot.status !== "idle") {
         return stop();
       }
+      clearSettleTimer();
+      pushGated = adapters.isPushToTalk?.() === true;
+      needsResumeAfterTalk = false;
       snapshot = {
-        status: "listening",
+        status: pushGated ? "paused" : "listening",
         draft: "",
         commits: [],
         error: null,
@@ -202,6 +277,7 @@ export function createDictation(adapters: {
       adapters.caretInject.beginDictation();
       adapters.session.start(listener, adapters.startOptions?.());
       publish();
+      chime("open");
     },
     showKeyMissing(message: string) {
       snapshot = {
@@ -215,21 +291,27 @@ export function createDictation(adapters: {
       publish();
     },
     fail(message: string) {
+      clearSettleTimer();
       adapters.session.stop();
+      pendingFlush = null;
+      pushGated = false;
       snapshot = {
-        ...snapshot,
         status: "idle",
+        draft: "",
+        commits: [],
         error: message,
         overlayVisible: true,
         meter: 0,
       };
       publish();
+      notifyFlushWaiters();
     },
     pause() {
       if (snapshot.status !== "listening") return Promise.resolve();
       if (pendingFlush !== null) return waitForPendingFlush();
       pendingFlush = "pause";
       adapters.session.sendEndOfAudio();
+      armSettleTimeout();
       return waitForPendingFlush();
     },
     resume() {
@@ -238,6 +320,28 @@ export function createDictation(adapters: {
       snapshot = { ...snapshot, status: "listening", error: null };
       adapters.session.resume?.();
       publish();
+    },
+    setTalkHeld(held: boolean) {
+      if (!pushGated || snapshot.status === "idle" || pendingFlush !== null) return;
+      if (held) {
+        if (snapshot.status !== "paused") return;
+        audioSettled = false;
+        snapshot = { ...snapshot, status: "listening", error: null, meter: 0 };
+        if (needsResumeAfterTalk) {
+          needsResumeAfterTalk = false;
+          adapters.session.resume?.();
+        }
+        publish();
+        chime("talk");
+        return;
+      }
+      if (snapshot.status !== "listening") return;
+      snapshot = { ...snapshot, status: "paused", meter: 0 };
+      publish();
+      // End the utterance so Gemini can finish the Draft → Commit, but do not Flush yet.
+      needsResumeAfterTalk = true;
+      adapters.session.sendEndOfAudio();
+      chime("release");
     },
     stop,
     sendPcm(pcm: Uint8Array) {

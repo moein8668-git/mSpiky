@@ -7,4 +7,5 @@ export {
 export type SessionSettings = {
   micId: string;
   mode: import("../dictation/dictation").TranscriptMode;
+  chimesEnabled?: boolean;
 };

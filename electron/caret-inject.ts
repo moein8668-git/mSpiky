@@ -1,77 +1,99 @@
+import { spawn } from "node:child_process";
 import { clipboard } from "electron";
-import { spawnSync } from "node:child_process";
 import { createPasteFirstCaretInject } from "../src/caret-inject/paste-first";
 
-function runPowerShell(command: string): string | null {
-  const result = spawnSync(
-    "powershell",
-    ["-NoProfile", "-Command", command],
-    { encoding: "utf8" },
-  );
-  if (result.status !== 0 || result.error) return null;
-  return result.stdout.trim() || null;
+const POWERSHELL_TIMEOUT_MS = 1500;
+
+function runCommand(
+  command: string,
+  args: string[],
+  timeoutMs = POWERSHELL_TIMEOUT_MS,
+): Promise<string | null> {
+  return new Promise((resolve) => {
+    const child = spawn(command, args, { windowsHide: true });
+    let stdout = "";
+    let settled = false;
+
+    const finish = (value: string | null) => {
+      if (settled) return;
+      settled = true;
+      resolve(value);
+    };
+
+    const timer = setTimeout(() => {
+      child.kill();
+      finish(null);
+    }, timeoutMs);
+
+    child.stdout?.setEncoding("utf8");
+    child.stdout?.on("data", (chunk: string) => {
+      stdout += chunk;
+    });
+    child.on("error", () => {
+      clearTimeout(timer);
+      finish(null);
+    });
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      if (code !== 0) {
+        finish(null);
+        return;
+      }
+      finish(stdout.trim() || null);
+    });
+  });
 }
 
-function foregroundTargetId(): string {
+function runPowerShell(command: string): Promise<string | null> {
+  return runCommand("powershell", ["-NoProfile", "-Command", command]);
+}
+
+async function foregroundTargetId(): Promise<string> {
   try {
     if (process.platform === "win32") {
-      const hwnd = runPowerShell(
+      const hwnd = await runPowerShell(
         'Add-Type -MemberDefinition \'[DllImport("user32.dll")] public static extern System.IntPtr GetForegroundWindow();\' -Name MspikyWin -Namespace Mspiky; [Mspiky.MspikyWin]::GetForegroundWindow().ToString()',
       );
       return hwnd ?? "unknown";
     }
     if (process.platform === "darwin") {
-      const result = spawnSync(
-        "osascript",
-        [
-          "-e",
-          'tell application "System Events" to get name of first application process whose frontmost is true',
-        ],
-        { encoding: "utf8" },
-      );
-      if (result.status === 0 && result.stdout) return result.stdout.trim();
-      return "unknown";
+      const name = await runCommand("osascript", [
+        "-e",
+        'tell application "System Events" to get name of first application process whose frontmost is true',
+      ]);
+      return name ?? "unknown";
     }
-    const result = spawnSync("xdotool", ["getactivewindow"], {
-      encoding: "utf8",
-    });
-    if (result.status === 0 && result.stdout) return result.stdout.trim();
-    return "unknown";
+    const id = await runCommand("xdotool", ["getactivewindow"]);
+    return id ?? "unknown";
   } catch {
     return "unknown";
   }
 }
 
-function pasteChord() {
+async function pasteChord() {
   try {
     if (process.platform === "win32") {
-      runPowerShell(
+      await runPowerShell(
         'Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait("^v")',
       );
       return;
     }
     if (process.platform === "darwin") {
-      spawnSync(
-        "osascript",
-        [
-          "-e",
-          'tell application "System Events" to keystroke "v" using command down',
-        ],
-        { stdio: "ignore" },
-      );
+      await runCommand("osascript", [
+        "-e",
+        'tell application "System Events" to keystroke "v" using command down',
+      ]);
       return;
     }
-    spawnSync("xdotool", ["key", "ctrl+v"], { stdio: "ignore" });
+    await runCommand("xdotool", ["key", "ctrl+v"]);
   } catch {
     // Paste failure is handled by paste-first fallback.
   }
 }
 
-function canPasteAtCaret(): boolean {
-  return true;
-}
-
 export function createElectronCaretInject() {
+  let lastTarget = "unknown";
+
   return createPasteFirstCaretInject({
     clipboard: {
       read() {
@@ -92,19 +114,21 @@ export function createElectronCaretInject() {
       restore() {},
     },
     target: {
-      capture() {
-        return foregroundTargetId();
+      async capture() {
+        lastTarget = await foregroundTargetId();
+        return lastTarget;
       },
-      current() {
-        return foregroundTargetId();
+      async current() {
+        lastTarget = await foregroundTargetId();
+        return lastTarget;
       },
     },
     paste: {
       canPaste() {
-        return canPasteAtCaret();
+        return true;
       },
-      paste() {
-        pasteChord();
+      async paste() {
+        await pasteChord();
       },
     },
     context: {

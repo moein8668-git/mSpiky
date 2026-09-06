@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from "electron";
+import type { ChimeKind } from "../src/audio/chime";
+import type { AppSettings } from "../src/settings/app-settings";
 import type { OverlaySnapshot } from "../src/dictation/dictation";
-import type { SessionSettings } from "../src/settings/session-settings";
 
 contextBridge.exposeInMainWorld("mspiky", {
   onSnapshot(listener: (snapshot: OverlaySnapshot) => void) {
@@ -12,6 +13,15 @@ contextBridge.exposeInMainWorld("mspiky", {
       ipcRenderer.removeListener("mspiky:overlay-snapshot", handler);
     };
   },
+  onChime(listener: (kind: ChimeKind) => void) {
+    const handler = (_event: Electron.IpcRendererEvent, kind: ChimeKind) => {
+      listener(kind);
+    };
+    ipcRenderer.on("mspiky:chime", handler);
+    return () => {
+      ipcRenderer.removeListener("mspiky:chime", handler);
+    };
+  },
   sendPcm(pcm: Uint8Array) {
     ipcRenderer.send("mspiky:overlay-pcm", pcm);
   },
@@ -19,6 +29,8 @@ contextBridge.exposeInMainWorld("mspiky", {
     ipcRenderer.send("mspiky:overlay-mic-fail");
   },
   captureSettings() {
-    return ipcRenderer.invoke("mspiky:settings-get") as Promise<SessionSettings>;
+    return ipcRenderer.invoke("mspiky:settings-get") as Promise<
+      Pick<AppSettings, "micId" | "mode" | "chimesEnabled">
+    >;
   },
 });

@@ -1,4 +1,4 @@
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import { createDictation } from "./dictation";
 import type { SessionListener, SessionStartOptions } from "./dictation";
 import { createFakeSession } from "./fake-session";
@@ -192,7 +192,8 @@ test("Stop Flushes then ends Dictation and hides Overlay", async () => {
     draft: "",
     commits: [],
   });
-  expect(sessionCalls.endOfAudio).toBe(1);
+  // No Draft left — Stop pastes without waiting on another end-of-audio cycle.
+  expect(sessionCalls.endOfAudio).toBe(0);
   expect(sessionCalls.stop).toBe(1);
 });
 
@@ -250,7 +251,7 @@ test("Stop hides Overlay immediately when no Draft is moving", async () => {
   await stopPromise;
 });
 
-test("Stop does not Flush while a Draft is still moving", async () => {
+test("Stop hides Overlay immediately even while a Draft is still moving", async () => {
   const { dictation, emitDraft, emitCommit, flushes, sessionCalls } =
     createHarness();
 
@@ -260,7 +261,7 @@ test("Stop does not Flush while a Draft is still moving", async () => {
   void dictation.stop();
 
   expect(flushes).toEqual([]);
-  expect(dictation.snapshot().overlayVisible).toBe(true);
+  expect(dictation.snapshot().overlayVisible).toBe(false);
   expect(sessionCalls.stop).toBe(0);
 
   emitCommit("world");
@@ -496,4 +497,216 @@ test("start passes stored mode into the Session", () => {
 
   dictation.start();
   expect(options).toEqual([{ mode: "verbatim" }]);
+});
+
+test("Stop pastes immediately when there is no Draft left", async () => {
+  const { dictation, emitCommit, flushes } = createHarness();
+
+  dictation.start();
+  emitCommit("hello world");
+  const stopPromise = dictation.stop();
+
+  // No need to wait for onAudioEnded — commits are already ready.
+  await stopPromise;
+  expect(flushes).toEqual(["hello world"]);
+  expect(dictation.snapshot().status).toBe("idle");
+});
+
+test("close chime plays as soon as Stop starts, paste chime after Flush", async () => {
+  const chimes: string[] = [];
+  let listener: SessionListener | undefined;
+  const dictation = createDictation({
+    session: {
+      start(next) {
+        listener = next;
+      },
+      sendPcm() {},
+      sendEndOfAudio() {},
+      stop() {},
+    },
+    caretInject: {
+      beginDictation() {},
+      async inject(_text) {
+        await Promise.resolve();
+        return { kind: "pasted" as const };
+      },
+    },
+    onChime(kind) {
+      chimes.push(kind);
+    },
+  });
+
+  dictation.start();
+  expect(chimes).toEqual(["open"]);
+  listener?.onCommit("hello");
+  const stopPromise = dictation.stop();
+  expect(chimes).toEqual(["open", "close"]);
+  listener?.onAudioEnded();
+  await stopPromise;
+  expect(chimes).toEqual(["open", "close", "paste"]);
+});
+
+test("Stop still finishes if the Session never reports audio ended", async () => {
+  vi.useFakeTimers();
+  const flushes: string[] = [];
+  const dictation = createDictation({
+    session: {
+      start() {},
+      sendPcm() {},
+      sendEndOfAudio() {},
+      stop() {},
+    },
+    caretInject: {
+      beginDictation() {},
+      inject(text) {
+        flushes.push(text);
+        return { kind: "pasted" as const };
+      },
+    },
+    settleTimeoutMs: 500,
+  });
+
+  dictation.start();
+  const stopPromise = dictation.stop();
+  await vi.advanceTimersByTimeAsync(500);
+  await stopPromise;
+
+  expect(dictation.snapshot().status).toBe("idle");
+  expect(flushes).toEqual([]);
+  vi.useRealTimers();
+});
+
+test("Stop force-settles a stuck Draft after the settle timeout", async () => {
+  vi.useFakeTimers();
+  let listener: SessionListener | undefined;
+  const flushes: string[] = [];
+  const dictation = createDictation({
+    session: {
+      start(next) {
+        listener = next;
+      },
+      sendPcm() {},
+      sendEndOfAudio() {},
+      stop() {},
+    },
+    caretInject: {
+      beginDictation() {},
+      inject(text) {
+        flushes.push(text);
+        return { kind: "pasted" as const };
+      },
+    },
+    settleTimeoutMs: 400,
+  });
+
+  dictation.start();
+  listener?.onCommit("hello");
+  listener?.onDraft("wor");
+  const stopPromise = dictation.stop();
+  await vi.advanceTimersByTimeAsync(400);
+  await stopPromise;
+
+  expect(flushes).toEqual(["hello wor"]);
+  expect(dictation.snapshot().status).toBe("idle");
+  vi.useRealTimers();
+});
+
+test("push-to-talk release ends audio so the Draft can finish without Flush", async () => {
+  let listener: SessionListener | undefined;
+  const flushes: string[] = [];
+  const sessionCalls = { endOfAudio: 0, resume: 0 };
+  const dictation = createDictation({
+    session: {
+      start(next) {
+        listener = next;
+      },
+      sendPcm() {},
+      sendEndOfAudio() {
+        sessionCalls.endOfAudio += 1;
+      },
+      resume() {
+        sessionCalls.resume += 1;
+      },
+      stop() {},
+    },
+    caretInject: {
+      beginDictation() {},
+      inject(text) {
+        flushes.push(text);
+        return { kind: "pasted" as const };
+      },
+    },
+    isPushToTalk: () => true,
+  });
+
+  dictation.start();
+  dictation.setTalkHeld(true);
+  listener?.onDraft("hello wor");
+  dictation.setTalkHeld(false);
+
+  expect(sessionCalls.endOfAudio).toBe(1);
+  expect(dictation.snapshot().status).toBe("paused");
+  expect(flushes).toEqual([]);
+  expect(dictation.snapshot().draft).toBe("hello wor");
+
+  listener?.onCommit("hello world");
+  expect(dictation.snapshot()).toMatchObject({
+    draft: "",
+    commits: ["hello world"],
+    status: "paused",
+  });
+  expect(flushes).toEqual([]);
+
+  dictation.setTalkHeld(true);
+  expect(sessionCalls.resume).toBe(1);
+  expect(dictation.snapshot().status).toBe("listening");
+});
+
+test("push-to-talk starts Overlay paused and only sends PCM while held", async () => {
+  let listener: SessionListener | undefined;
+  const flushes: string[] = [];
+  const pcm: Uint8Array[] = [];
+  const dictation = createDictation({
+    session: {
+      start(next) {
+        listener = next;
+      },
+      sendPcm(chunk) {
+        pcm.push(chunk);
+      },
+      sendEndOfAudio() {
+        listener?.onAudioEnded();
+      },
+      stop() {},
+    },
+    caretInject: {
+      beginDictation() {},
+      inject(text) {
+        flushes.push(text);
+        return { kind: "pasted" as const };
+      },
+    },
+    isPushToTalk: () => true,
+  });
+
+  dictation.start();
+  expect(dictation.snapshot()).toMatchObject({
+    status: "paused",
+    overlayVisible: true,
+  });
+  dictation.sendPcm(new Uint8Array([1, 2]));
+  expect(pcm).toEqual([]);
+
+  dictation.setTalkHeld(true);
+  expect(dictation.snapshot().status).toBe("listening");
+  dictation.sendPcm(new Uint8Array([3, 4]));
+  expect(pcm).toHaveLength(1);
+
+  dictation.setTalkHeld(false);
+  expect(dictation.snapshot().status).toBe("paused");
+  expect(flushes).toEqual([]);
+
+  listener?.onCommit("hello");
+  await dictation.stop();
+  expect(flushes).toEqual(["hello"]);
 });

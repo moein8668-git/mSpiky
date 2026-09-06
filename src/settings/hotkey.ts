@@ -1,4 +1,5 @@
 export const DEFAULT_DICTATION_HOTKEY = "Control+Shift+Space";
+export const DEFAULT_PUSH_TO_TALK_HOTKEY = "F8";
 
 const RESERVED = new Set([
   "alt+f4",
@@ -78,4 +79,53 @@ export function validateHotkey(chord: string): HotkeyValidation {
   }
 
   return { ok: true };
+}
+
+export function validatePushHotkey(chord: string): HotkeyValidation {
+  const trimmed = chord.trim();
+  if (!trimmed) {
+    return { ok: false, reason: "Choose a push-to-talk key." };
+  }
+
+  const parts = parseHotkey(trimmed);
+  if (RESERVED.has(parts.join("+"))) {
+    return { ok: false, reason: "That chord is reserved by the OS." };
+  }
+
+  if (parts.length === 1) {
+    return { ok: true };
+  }
+
+  return validateHotkey(chord);
+}
+
+export type HotkeyEvent = {
+  key: string;
+  ctrlKey: boolean;
+  shiftKey: boolean;
+  altKey: boolean;
+  metaKey: boolean;
+};
+
+export function matchesHotkey(event: HotkeyEvent, chord: string): boolean {
+  const parts = parseHotkey(chord);
+  if (parts.length === 0) return false;
+
+  const eventKey = normalizePart(event.key);
+  const keyPart = parts.find((part) => !MODIFIERS.has(part));
+  if (!keyPart) {
+    return parts.length === 1 && eventKey === parts[0];
+  }
+
+  const wantsCtrl = parts.includes("control");
+  const wantsShift = parts.includes("shift");
+  const wantsAlt = parts.includes("alt");
+  const wantsMeta = parts.includes("meta");
+  return (
+    event.ctrlKey === wantsCtrl &&
+    event.shiftKey === wantsShift &&
+    event.altKey === wantsAlt &&
+    event.metaKey === wantsMeta &&
+    eventKey === keyPart
+  );
 }

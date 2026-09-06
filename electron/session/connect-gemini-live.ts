@@ -12,6 +12,10 @@ import type { GeminiShapedEvent } from "../../src/dictation/map-gemini-event";
 import { sessionTranscriptionConfig } from "../../src/session/session-transcription-config";
 import { buildSocksProxyUrl } from "../../src/session/pipe-url";
 import type { PipeSettings } from "../../src/settings/app-settings";
+import {
+  installLiveWebSocketFactory,
+  type LiveWebSocketFactory,
+} from "./proxy-websocket-factory";
 
 const DEFAULT_MODEL =
   process.env.GEMINI_TRANSCRIBE_MODEL || "gemini-3.5-transcribe-live";
@@ -51,6 +55,18 @@ function eventsFromMessage(message: LiveServerMessage): GeminiShapedEvent[] {
   return events;
 }
 
+function createLiveClient(apiKey: string, pipe: PipeConnectConfig | null) {
+  const ai = new GoogleGenAI({ apiKey });
+  if (pipe?.enabled) {
+    const agent = new SocksProxyAgent(buildSocksProxyUrl(pipe, pipe.password));
+    installLiveWebSocketFactory(
+      ai.live as unknown as { webSocketFactory: LiveWebSocketFactory },
+      agent,
+    );
+  }
+  return ai;
+}
+
 export const connectGeminiLive: LiveConnect = async (options, callbacks) => {
   const pipe = "pipe" in options ? (options as { pipe?: PipeConnectConfig | null }).pipe : null;
   if (pipe?.enabled) {
@@ -63,19 +79,7 @@ export const connectGeminiLive: LiveConnect = async (options, callbacks) => {
     }
   }
 
-  const httpOptions =
-    pipe?.enabled
-      ? {
-          agent: new SocksProxyAgent(
-            buildSocksProxyUrl(pipe, pipe.password),
-          ),
-        }
-      : undefined;
-
-  const ai = new GoogleGenAI({
-    apiKey: options.apiKey,
-    httpOptions: httpOptions as never,
-  });
+  const ai = createLiveClient(options.apiKey, pipe ?? null);
   const transcription: TranscriptionConfig = sessionTranscriptionConfig(options.mode);
 
   const tryConnect = (responseModalities: Modality[]) =>

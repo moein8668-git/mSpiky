@@ -21,9 +21,9 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.electron.json",
     "build:electron": "node scripts/build-electron.mjs",
     "dist": "npm run build && npm run build:electron && electron-builder",
-    "dist:win": "npm run build && npm run build:electron && electron-builder --win",
-    "dist:mac": "npm run build && npm run build:electron && electron-builder --mac",
-    "dist:linux": "npm run build && npm run build:electron && electron-builder --linux",
+    "dist:win": "npm run build && npm run build:electron && electron-builder --win --x64",
+    "dist:mac": "npm run build && npm run build:electron && electron-builder --mac --universal",
+    "dist:linux": "npm run build && npm run build:electron && electron-builder --linux --x64",
     "dev:desktop": "concurrently -n web,desktop -c magenta,green \"vite\" \"npm run dev:electron\"",
     "dev:electron": "node scripts/build-electron.mjs && wait-on http://127.0.0.1:5173 && electron ."
   },
@@ -36,7 +36,8 @@
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "socks-proxy-agent": "^8.0.5",
-    "ws": "^8.18.3"
+    "uiohook-napi": "^1.5.5",
+    "ws": "^8.21.3"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.1.12",
@@ -60,33 +61,95 @@
     "appId": "com.mspiky.desktop",
     "productName": "mSpiky",
     "directories": {
-      "output": "release"
+      "output": "release",
+      "buildResources": "build"
     },
+    "icon": "build/icon.png",
     "files": [
       "dist/**",
       "dist-electron/**",
-      "package.json"
+      "package.json",
+      "build/tray-icon.png",
+      "build/icon.png",
+      "build/icon.ico",
+      "node_modules/uiohook-napi/**",
+      "node_modules/node-gyp-build/**"
+    ],
+    "asarUnpack": [
+      "node_modules/uiohook-napi/**"
     ],
     "extraMetadata": {
       "main": "dist-electron/main.cjs"
     },
     "win": {
+      "icon": "build/icon.ico",
       "target": [
-        "nsis"
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "msi",
+          "arch": [
+            "x64"
+          ]
+        }
       ]
     },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "mSpiky"
+    },
+    "msi": {
+      "oneClick": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "mSpiky"
+    },
     "mac": {
+      "icon": "build/icon.png",
       "target": [
-        "dmg"
+        {
+          "target": "dmg",
+          "arch": [
+            "universal"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "universal"
+          ]
+        }
       ],
-      "category": "public.app-category.productivity"
+      "category": "public.app-category.productivity",
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false
     },
     "linux": {
+      "icon": "build/icon.png",
       "target": [
-        "AppImage",
-        "deb"
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        }
       ],
-      "category": "Utility"
+      "category": "Utility",
+      "synopsis": "Desktop dictation overlay for Gemini Live",
+      "description": "Speak and Flush text into the focused app. Bring your own Gemini Key."
     },
     "publish": [
       "github"

@@ -33,6 +33,13 @@ export function Overlay({ snapshot }: { snapshot: OverlaySnapshot }) {
       >
         <DotsSixVertical size={18} weight="bold" aria-hidden />
       </div>
+      <img
+        src="/mspiky.png"
+        alt=""
+        width={20}
+        height={20}
+        className="h-5 w-5 shrink-0 rounded"
+      />
       <span className="shrink-0 text-xs font-medium uppercase tracking-wide text-mute">
         mSpiky
       </span>
