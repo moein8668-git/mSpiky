@@ -1,7 +1,7 @@
 {
   "name": "live-transcribe",
   "private": true,
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Desktop dictation overlay for Gemini Live",
   "author": "mSpiky contributors <moein8668-git@users.noreply.github.com>",
   "desktopName": "mspiky",
@@ -157,8 +157,11 @@
       "synopsis": "Desktop dictation overlay for Gemini Live",
       "description": "Speak and Flush text into the focused app. Bring your own Gemini Key."
     },
-    "publish": [
-      "github"
-    ]
+    "publish": {
+      "provider": "github",
+      "owner": "moein8668-git",
+      "repo": "mSpiky",
+      "releaseType": "release"
+    }
   }
 }
