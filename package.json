@@ -22,7 +22,7 @@
     "build:electron": "node scripts/build-electron.mjs",
     "dist": "npm run build && npm run build:electron && electron-builder",
     "dist:win": "npm run build && npm run build:electron && electron-builder --win --x64",
-    "dist:mac": "npm run build && npm run build:electron && electron-builder --mac --universal",
+    "dist:mac": "npm run build && npm run build:electron && electron-builder --mac --arm64",
     "dist:linux": "npm run build && npm run build:electron && electron-builder --linux --x64",
     "dev:desktop": "concurrently -n web,desktop -c magenta,green \"vite\" \"npm run dev:electron\"",
     "dev:electron": "node scripts/build-electron.mjs && wait-on http://127.0.0.1:5173 && electron ."
@@ -113,17 +113,18 @@
     },
     "mac": {
       "icon": "build/icon.png",
+      "identity": null,
       "target": [
         {
           "target": "dmg",
           "arch": [
-            "universal"
+            "arm64"
           ]
         },
         {
           "target": "zip",
           "arch": [
-            "universal"
+            "arm64"
           ]
         }
       ],
