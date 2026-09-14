@@ -1,9 +1,10 @@
 {
   "name": "live-transcribe",
   "private": true,
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "Desktop dictation overlay for Gemini Live",
   "author": "mSpiky contributors <moein8668-git@users.noreply.github.com>",
+  "desktopName": "mspiky",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -136,7 +137,6 @@
     "linux": {
       "icon": "build/icons",
       "executableName": "mspiky",
-      "desktopName": "mspiky",
       "syncDesktopName": true,
       "maintainer": "mSpiky contributors <moein8668-git@users.noreply.github.com>",
       "target": [
