@@ -12,7 +12,7 @@ Prebuilt installers are published on [GitHub Releases](https://github.com/moein8
 - macOS Apple Silicon (`.dmg` and `.zip`)
 - Linux (AppImage and `.deb`)
 
-Current series: **v0.1.x** (not 1.0). Latest installer tag: **v0.1.2**.
+Current series: **v0.1.x** (not 1.0). Latest installer tag: **v0.1.3**.
 
 You do not need Node.js to run mSpiky.
 
