@@ -1,7 +1,7 @@
 {
   "name": "live-transcribe",
   "private": true,
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Desktop dictation overlay for Gemini Live",
   "author": "mSpiky contributors",
   "license": "MIT",
@@ -72,6 +72,7 @@
       "build/tray-icon.png",
       "build/icon.png",
       "build/icon.ico",
+      "build/icons/**",
       "node_modules/uiohook-napi/**",
       "node_modules/node-gyp-build/**"
     ],
@@ -133,16 +134,17 @@
       "gatekeeperAssess": false
     },
     "linux": {
-      "icon": "build/icon.png",
+      "icon": "build/icons",
+      "executableName": "mspiky",
       "target": [
         {
-          "target": "AppImage",
+          "target": "deb",
           "arch": [
             "x64"
           ]
         },
         {
-          "target": "deb",
+          "target": "AppImage",
           "arch": [
             "x64"
           ]
